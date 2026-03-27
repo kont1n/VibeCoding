@@ -1,0 +1,7 @@
+{
+  "lm_studio": {
+    "endpoint": "http://localhost:1234/v1",
+    "model": "moondream-2b-2025-04-14:2",
+    "max_tokens": 200
+  }
+}
