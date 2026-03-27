@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Grouping — Results</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 2rem 2rem 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 1.2rem;
+    letter-spacing: -0.02em;
+  }
+  .stats {
+    display: flex;
+    gap: 2.5rem;
+    flex-wrap: wrap;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+  }
+  .stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #e94560;
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #666;
+    margin-top: 0.35rem;
+  }
+
+  .container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .person-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .person-card {
+    background: #12121a;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .person-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(233, 69, 96, 0.12);
+    border-color: rgba(233, 69, 96, 0.2);
+  }
+  .person-card .thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    background: #1a1a2e;
+    display: block;
+  }
+  .person-card .no-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #1a1a2e, #0f3460);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    color: #ffffff30;
+  }
+  .person-card .info {
+    padding: 0.9rem 1rem;
+  }
+  .person-card .name {
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #fff;
+  }
+  .person-card .count {
+    color: #777;
+    font-size: 0.82rem;
+    margin-top: 0.25rem;
+  }
+  .person-card .desc {
+    color: #999;
+    font-size: 0.78rem;
+    margin-top: 0.4rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Detail view */
+  .detail { display: none; }
+  .detail.active { display: block; }
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  .back-btn {
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #e0e0e0;
+    padding: 0.5rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+  .back-btn:hover {
+    background: #e94560;
+    border-color: #e94560;
+    color: #fff;
+  }
+  .detail-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(233, 69, 96, 0.4);
+    flex-shrink: 0;
+  }
+  .detail h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #fff;
+  }
+  .detail-desc {
+    color: #999;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+  }
+
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+  }
+  .photo-grid img {
+    width: 100%;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    display: block;
+  }
+  .photo-grid img:hover {
+    transform: scale(1.02);
+  }
+
+  /* Modal */
+  .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+  .modal.active { display: flex; }
+  .modal img {
+    max-width: 92vw;
+    max-height: 92vh;
+    border-radius: 6px;
+    box-shadow: 0 0 80px rgba(0,0,0,0.5);
+  }
+  .modal-close {
+    position: fixed;
+    top: 1rem;
+    right: 1.5rem;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2.2rem;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .modal-close:hover { opacity: 1; }
+
+  .loading {
+    text-align: center;
+    padding: 4rem;
+    color: #555;
+    font-size: 1rem;
+  }
+
+  .error-bar {
+    background: rgba(233, 69, 96, 0.1);
+    border: 1px solid rgba(233, 69, 96, 0.25);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1.5rem;
+    color: #e94560;
+    font-size: 0.9rem;
+  }
+
+  .stat-clickable {
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    margin: -0.4rem -0.6rem;
+    transition: background 0.2s;
+  }
+  .stat-clickable:hover {
+    background: rgba(233, 69, 96, 0.12);
+  }
+
+  .errors-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 5vh 1rem;
+    overflow-y: auto;
+  }
+  .errors-modal.active { display: flex; }
+  .errors-panel {
+    background: #14141e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .errors-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    position: sticky;
+    top: 0;
+    background: #14141e;
+    z-index: 1;
+  }
+  .errors-panel-header h3 {
+    font-size: 1.1rem;
+    color: #fff;
+    font-weight: 600;
+  }
+  .errors-panel-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.6rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .errors-panel-close:hover { color: #e94560; }
+  .errors-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .errors-table th {
+    text-align: left;
+    padding: 0.7rem 1.2rem;
+    color: #777;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .errors-table td {
+    padding: 0.6rem 1.2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    vertical-align: top;
+  }
+  .errors-table .err-file {
+    color: #ccc;
+    word-break: break-all;
+    max-width: 350px;
+  }
+  .errors-table .err-msg {
+    color: #e94560;
+    word-break: break-word;
+  }
+  .errors-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 1.2rem; }
+    .stats { gap: 1.5rem; }
+    .container { padding: 1rem; }
+    .person-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
+    .photo-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Face Grouping</h1>
+  <div class="stats" id="stats">
+    <div class="loading">Загрузка отчёта...</div>
+  </div>
+</div>
+
+<div class="container">
+  <div id="error-container"></div>
+
+  <div id="overview" class="person-grid"></div>
+
+  <div id="detail" class="detail">
+    <div class="detail-header">
+      <button class="back-btn" id="back-btn">&larr; Назад</button>
+      <img class="detail-avatar" id="detail-avatar" src="" alt="">
+      <h2 id="detail-title"></h2>
+    </div>
+    <p class="detail-desc" id="detail-desc"></p>
+    <div class="photo-grid" id="detail-photos"></div>
+  </div>
+</div>
+
+<div class="errors-modal" id="errors-modal">
+  <div class="errors-panel">
+    <div class="errors-panel-header">
+      <h3 id="errors-panel-title">Ошибки обработки</h3>
+      <button class="errors-panel-close" id="errors-modal-close">&times;</button>
+    </div>
+    <table class="errors-table">
+      <thead><tr><th>#</th><th>Файл</th><th>Ошибка</th></tr></thead>
+      <tbody id="errors-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <button class="modal-close">&times;</button>
+  <img id="modal-img" src="" alt="">
+</div>
+
+<script>
+let report = null;
+
+async function init() {
+  try {
+    const resp = await fetch('/api/report');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    report = await resp.json();
+    renderStats();
+    renderOverview();
+  } catch (e) {
+    document.getElementById('error-container').innerHTML =
+      '<div class="error-bar">Ошибка загрузки отчёта: ' + e.message + '</div>';
+    document.getElementById('stats').innerHTML = '';
+  }
+}
+
+function renderStats() {
+  const s = document.getElementById('stats');
+  const items = [
+    [report.total_images, 'Изображений'],
+    [report.total_faces, 'Лиц'],
+    [report.total_persons, 'Персон'],
+    [report.errors, 'Ошибок', report.errors > 0],
+    [report.duration, 'Время'],
+    [report.gpu ? 'GPU' : 'CPU', 'Режим'],
+  ];
+  s.innerHTML = items.map(function(item) {
+    var clickable = item[2] ? ' stat-clickable' : '';
+    var id = item[2] ? ' id="stat-errors"' : '';
+    return '<div class="stat' + clickable + '"' + id + '><span class="stat-value">' + item[0] + '</span><span class="stat-label">' + item[1] + '</span></div>';
+  }).join('');
+
+  if (report.errors > 0) {
+    document.getElementById('stat-errors').addEventListener('click', showErrors);
+  }
+}
+
+function renderOverview() {
+  const grid = document.getElementById('overview');
+  grid.style.display = 'grid';
+  document.getElementById('detail').classList.remove('active');
+
+  grid.innerHTML = report.persons.map(function(p, i) {
+    var thumbHtml = p.thumbnail
+      ? '<img class="thumb" src="/output/' + p.thumbnail + '" alt="Person ' + p.id + '">'
+      : '<div class="no-thumb">&#128100;</div>';
+    var descHtml = p.description
+      ? '<div class="desc">' + escapeHtml(p.description) + '</div>'
+      : '';
+    return '<div class="person-card" data-idx="' + i + '">'
+      + thumbHtml
+      + '<div class="info">'
+      + '<div class="name">Person ' + p.id + '</div>'
+      + '<div class="count">' + p.photo_count + ' фото &middot; ' + p.face_count + ' лиц</div>'
+      + descHtml
+      + '</div></div>';
+  }).join('');
+
+  grid.querySelectorAll('.person-card').forEach(function(card) {
+    card.addEventListener('click', function() {
+      showDetail(parseInt(this.dataset.idx));
+    });
+  });
+}
+
+function showDetail(idx) {
+  var p = report.persons[idx];
+  document.getElementById('overview').style.display = 'none';
+
+  var detail = document.getElementById('detail');
+  detail.classList.add('active');
+
+  var avatar = document.getElementById('detail-avatar');
+  if (p.thumbnail) {
+    avatar.src = '/output/' + p.thumbnail;
+    avatar.style.display = 'block';
+  } else {
+    avatar.style.display = 'none';
+  }
+
+  document.getElementById('detail-title').textContent = 'Person ' + p.id + ' — ' + p.photo_count + ' фото';
+  document.getElementById('detail-desc').textContent = p.description || '';
+
+  var photosDiv = document.getElementById('detail-photos');
+  photosDiv.innerHTML = p.photos.map(function(photo) {
+    return '<img src="/output/' + photo + '" loading="lazy" alt="">';
+  }).join('');
+
+  photosDiv.querySelectorAll('img').forEach(function(img) {
+    img.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openModal(this.src);
+    });
+  });
+
+  window.scrollTo(0, 0);
+}
+
+function showOverview() {
+  document.getElementById('detail').classList.remove('active');
+  document.getElementById('overview').style.display = 'grid';
+  window.scrollTo(0, 0);
+}
+
+function openModal(src) {
+  document.getElementById('modal-img').src = src;
+  document.getElementById('modal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function showErrors() {
+  var fe = report.file_errors || {};
+  var keys = Object.keys(fe);
+  var title = document.getElementById('errors-panel-title');
+  title.textContent = 'Ошибки обработки (' + keys.length + ')';
+
+  var tbody = document.getElementById('errors-tbody');
+  tbody.innerHTML = keys.map(function(file, i) {
+    return '<tr><td style="color:#555">' + (i + 1) + '</td>'
+      + '<td class="err-file">' + escapeHtml(file) + '</td>'
+      + '<td class="err-msg">' + escapeHtml(fe[file]) + '</td></tr>';
+  }).join('');
+
+  document.getElementById('errors-modal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeErrors() {
+  document.getElementById('errors-modal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function escapeHtml(text) {
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+document.getElementById('back-btn').addEventListener('click', showOverview);
+document.getElementById('modal').addEventListener('click', closeModal);
+document.getElementById('errors-modal-close').addEventListener('click', closeErrors);
+document.getElementById('errors-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeErrors();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeErrors();
+    closeModal();
+    if (document.getElementById('detail').classList.contains('active')) {
+      showOverview();
+    }
+  }
+});
+
+init();
+</script>
+</body>
+</html>

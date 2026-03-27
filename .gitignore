@@ -1,8 +1,6 @@
-face-grouper.exe
-face-grouper
-output/
 __pycache__/
 *.pyc
 .venv/
 *.onnx
 dataset/
+output/
