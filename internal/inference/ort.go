@@ -42,16 +42,23 @@ func DestroyORT() {
 }
 
 // SessionOptions builds an ort.SessionOptions with CUDA if requested.
-func SessionOptions(gpu bool) *ort.SessionOptions {
+func SessionOptions(gpu bool) (*ort.SessionOptions, error) {
 	opts, err := ort.NewSessionOptions()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("create session options: %w", err)
 	}
 	if gpu {
 		cudaOpts, err := ort.NewCUDAProviderOptions()
-		if err == nil {
-			opts.AppendExecutionProviderCUDA(cudaOpts)
+		if err != nil {
+			opts.Destroy()
+			return nil, fmt.Errorf("create CUDA provider options: %w", err)
 		}
+		if err := opts.AppendExecutionProviderCUDA(cudaOpts); err != nil {
+			cudaOpts.Destroy()
+			opts.Destroy()
+			return nil, fmt.Errorf("append CUDA provider: %w", err)
+		}
+		cudaOpts.Destroy()
 	}
-	return opts
+	return opts, nil
 }

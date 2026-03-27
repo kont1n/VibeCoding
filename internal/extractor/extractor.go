@@ -47,37 +47,106 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 		return nil, fmt.Errorf("recognition model not found at %s: %w", recPath, err)
 	}
 
-	det, err := inference.NewDetector(inference.DetectorConfig{
-		ModelPath: detPath,
-		GPU:       cfg.GPU,
-		DetThresh: cfg.DetThresh,
-		NMSThresh: cfg.NMSThresh,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("init detector: %w", err)
-	}
-	defer det.Close()
-
-	rec, err := inference.NewRecognizer(inference.RecognizerConfig{
-		ModelPath: recPath,
-		GPU:       cfg.GPU,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("init recognizer: %w", err)
-	}
-	defer rec.Close()
-
-	recSize := rec.InputSize()
-
 	type fileResult struct {
 		path  string
 		faces []models.Face
 		err   error
 	}
+	type workerRuntime struct {
+		det     *inference.Detector
+		rec     *inference.Recognizer
+		recSize int
+		inferMu *sync.Mutex
+	}
 
 	workers := cfg.Workers
 	if workers <= 0 {
 		workers = 1
+	}
+	runtimes := make([]workerRuntime, workers)
+
+	if cfg.GPU {
+		det, err := inference.NewDetector(inference.DetectorConfig{
+			ModelPath: detPath,
+			GPU:       true,
+			DetThresh: cfg.DetThresh,
+			NMSThresh: cfg.NMSThresh,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("init shared detector: %w", err)
+		}
+
+		rec, err := inference.NewRecognizer(inference.RecognizerConfig{
+			ModelPath: recPath,
+			GPU:       true,
+		})
+		if err != nil {
+			det.Close()
+			return nil, fmt.Errorf("init shared recognizer: %w", err)
+		}
+
+		recSize := rec.InputSize()
+		inferMu := &sync.Mutex{}
+		for i := range runtimes {
+			runtimes[i] = workerRuntime{
+				det:     det,
+				rec:     rec,
+				recSize: recSize,
+				inferMu: inferMu,
+			}
+		}
+		defer det.Close()
+		defer rec.Close()
+	} else {
+		closeInitialized := func(count int) {
+			for i := 0; i < count; i++ {
+				if runtimes[i].det != nil {
+					runtimes[i].det.Close()
+				}
+				if runtimes[i].rec != nil {
+					runtimes[i].rec.Close()
+				}
+			}
+		}
+
+		for i := range runtimes {
+			det, err := inference.NewDetector(inference.DetectorConfig{
+				ModelPath: detPath,
+				GPU:       false,
+				DetThresh: cfg.DetThresh,
+				NMSThresh: cfg.NMSThresh,
+			})
+			if err != nil {
+				closeInitialized(i)
+				return nil, fmt.Errorf("init detector for worker %d: %w", i+1, err)
+			}
+
+			rec, err := inference.NewRecognizer(inference.RecognizerConfig{
+				ModelPath: recPath,
+				GPU:       false,
+			})
+			if err != nil {
+				det.Close()
+				closeInitialized(i)
+				return nil, fmt.Errorf("init recognizer for worker %d: %w", i+1, err)
+			}
+
+			runtimes[i] = workerRuntime{
+				det:     det,
+				rec:     rec,
+				recSize: rec.InputSize(),
+			}
+		}
+		defer func() {
+			for _, rt := range runtimes {
+				if rt.det != nil {
+					rt.det.Close()
+				}
+				if rt.rec != nil {
+					rt.rec.Close()
+				}
+			}
+		}()
 	}
 
 	jobs := make(chan string, len(files))
@@ -85,14 +154,15 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
+		rt := runtimes[i]
 		wg.Add(1)
-		go func() {
+		go func(rt workerRuntime) {
 			defer wg.Done()
 			for path := range jobs {
-				faces, err := processImage(path, det, rec, recSize, cfg)
+				faces, err := processImage(path, rt.det, rt.rec, rt.recSize, cfg, rt.inferMu)
 				results <- fileResult{path: path, faces: faces, err: err}
 			}
-		}()
+		}(rt)
 	}
 
 	for _, f := range files {
@@ -130,12 +200,12 @@ func processImage(
 	rec *inference.Recognizer,
 	recSize int,
 	cfg Config,
+	inferMu *sync.Mutex,
 ) ([]models.Face, error) {
 	img := gocv.IMRead(imagePath, gocv.IMReadColor)
 	if img.Empty() {
 		return nil, fmt.Errorf("cannot read image: %s", imagePath)
 	}
-	defer img.Close()
 
 	if cfg.MaxDim > 0 {
 		h := img.Rows()
@@ -154,8 +224,9 @@ func processImage(
 			img = resized
 		}
 	}
+	defer img.Close()
 
-	dets, err := det.Detect(img)
+	dets, err := detectWithLock(det, img, inferMu)
 	if err != nil {
 		return nil, fmt.Errorf("detection: %w", err)
 	}
@@ -173,7 +244,7 @@ func processImage(
 		}
 	}()
 
-	embeddings, err := rec.GetEmbeddings(aligned)
+	embeddings, err := recognizeWithLock(rec, aligned, inferMu)
 	if err != nil {
 		return nil, fmt.Errorf("recognition: %w", err)
 	}
@@ -233,8 +304,26 @@ func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, face
 	thumbName := fmt.Sprintf("%s_face_%d.jpg", name, faceIdx)
 	thumbPath := filepath.Join(thumbDir, thumbName)
 
-	gocv.IMWriteWithParams(thumbPath, resized, []int{gocv.IMWriteJpegQuality, 90})
+	if ok := gocv.IMWriteWithParams(thumbPath, resized, []int{gocv.IMWriteJpegQuality, 90}); !ok {
+		return ""
+	}
 	return thumbPath
+}
+
+func detectWithLock(det *inference.Detector, img gocv.Mat, inferMu *sync.Mutex) ([]inference.Detection, error) {
+	if inferMu != nil {
+		inferMu.Lock()
+		defer inferMu.Unlock()
+	}
+	return det.Detect(img)
+}
+
+func recognizeWithLock(rec *inference.Recognizer, faces []gocv.Mat, inferMu *sync.Mutex) ([][]float64, error) {
+	if inferMu != nil {
+		inferMu.Lock()
+		defer inferMu.Unlock()
+	}
+	return rec.GetEmbeddings(faces)
 }
 
 func max(a, b int) int {

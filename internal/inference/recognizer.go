@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
-	"gocv.io/x/gocv"
 	ort "github.com/yalue/onnxruntime_go"
+	"gocv.io/x/gocv"
 )
 
 // Recognizer wraps an ArcFace ONNX model for face embedding extraction.
@@ -26,7 +26,11 @@ type RecognizerConfig struct {
 
 // NewRecognizer loads the ArcFace ONNX model.
 func NewRecognizer(cfg RecognizerConfig) (*Recognizer, error) {
-	opts := SessionOptions(cfg.GPU)
+	opts, err := SessionOptions(cfg.GPU)
+	if err != nil {
+		return nil, fmt.Errorf("session options: %w", err)
+	}
+	defer opts.Destroy()
 
 	inputs, outputs, err := ort.GetInputOutputInfo(cfg.ModelPath)
 	if err != nil {

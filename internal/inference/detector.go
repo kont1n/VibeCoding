@@ -5,8 +5,8 @@ import (
 	"image"
 	"sync"
 
-	"gocv.io/x/gocv"
 	ort "github.com/yalue/onnxruntime_go"
+	"gocv.io/x/gocv"
 )
 
 // Detector wraps an SCRFD ONNX model for face detection.
@@ -40,7 +40,11 @@ type DetectorConfig struct {
 // NewDetector loads the SCRFD ONNX model and inspects its outputs to determine
 // the FPN configuration (strides, anchors, keypoints support).
 func NewDetector(cfg DetectorConfig) (*Detector, error) {
-	opts := SessionOptions(cfg.GPU)
+	opts, err := SessionOptions(cfg.GPU)
+	if err != nil {
+		return nil, fmt.Errorf("session options: %w", err)
+	}
+	defer opts.Destroy()
 
 	inputs, outputs, err := ort.GetInputOutputInfo(cfg.ModelPath)
 	if err != nil {

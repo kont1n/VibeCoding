@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Unit tests (core packages)
+        run: |
+          go test ./internal/scanner ./internal/report ./internal/clustering -count=1
+
+      - name: Compile check (non-CGO packages)
+        run: |
+          go test ./internal/organizer ./internal/describer ./internal/web -count=1

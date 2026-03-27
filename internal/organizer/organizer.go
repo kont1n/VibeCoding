@@ -2,6 +2,7 @@ package organizer
 
 import (
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
@@ -51,6 +52,7 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 		}
 
 		seen := make(map[string]bool)
+		usedFileNames := make(map[string]bool)
 		var bestScore float64
 		var bestThumb string
 		var photos []string
@@ -58,7 +60,7 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 		for _, face := range cluster.Faces {
 			if !seen[face.FilePath] {
 				seen[face.FilePath] = true
-				fileName := filepath.Base(face.FilePath)
+				fileName := uniquePhotoName(face.FilePath, usedFileNames)
 				dstPath := filepath.Join(personDir, fileName)
 				if err := linkOrCopy(face.FilePath, dstPath); err != nil {
 					fmt.Fprintf(w, "WARNING: %s: %v\n", dstPath, err)
@@ -100,17 +102,58 @@ func linkOrCopy(src, dst string) error {
 	if err := os.Symlink(src, dst); err == nil {
 		return nil
 	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0o644)
+	return copyFile(src, dst)
 }
 
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o644)
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func uniquePhotoName(srcPath string, used map[string]bool) string {
+	base := filepath.Base(srcPath)
+	if !used[base] {
+		used[base] = true
+		return base
+	}
+
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	hash := shortPathHash(srcPath)
+	candidate := fmt.Sprintf("%s_%s%s", name, hash, ext)
+	if !used[candidate] {
+		used[candidate] = true
+		return candidate
+	}
+
+	for i := 1; ; i++ {
+		candidate = fmt.Sprintf("%s_%s_%d%s", name, hash, i, ext)
+		if !used[candidate] {
+			used[candidate] = true
+			return candidate
+		}
+	}
+}
+
+func shortPathHash(path string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(path))
+	return fmt.Sprintf("%016x", h.Sum64())[:10]
 }

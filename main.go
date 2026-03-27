@@ -54,7 +54,9 @@ func main() {
 	}
 	defer inference.DestroyORT()
 
-	os.MkdirAll(*outputDir, 0o755)
+	if err := os.MkdirAll(*outputDir, 0o755); err != nil {
+		log.Fatalf("cannot create output dir: %v", err)
+	}
 
 	logFile, err := os.Create(filepath.Join(*outputDir, "processing.log"))
 	if err != nil {
@@ -80,8 +82,12 @@ func main() {
 
 	// --- Thumbnails dir ---
 	thumbDir := filepath.Join(*outputDir, ".thumbnails")
-	os.RemoveAll(thumbDir)
-	os.MkdirAll(thumbDir, 0o755)
+	if err := os.RemoveAll(thumbDir); err != nil {
+		log.Fatalf("cannot clean thumbnails dir: %v", err)
+	}
+	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+		log.Fatalf("cannot create thumbnails dir: %v", err)
+	}
 
 	// --- Extract ---
 	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
