@@ -59,9 +59,9 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 			if !seen[face.FilePath] {
 				seen[face.FilePath] = true
 				fileName := filepath.Base(face.FilePath)
-				linkPath := filepath.Join(personDir, fileName)
-				if err := os.Symlink(face.FilePath, linkPath); err != nil {
-					fmt.Fprintf(w, "WARNING: symlink %s: %v\n", linkPath, err)
+				dstPath := filepath.Join(personDir, fileName)
+				if err := linkOrCopy(face.FilePath, dstPath); err != nil {
+					fmt.Fprintf(w, "WARNING: %s: %v\n", dstPath, err)
 				}
 				photos = append(photos, personName+"/"+fileName)
 			}
@@ -94,6 +94,17 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 	}
 
 	return persons, nil
+}
+
+func linkOrCopy(src, dst string) error {
+	if err := os.Symlink(src, dst); err == nil {
+		return nil
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o644)
 }
 
 func copyFile(src, dst string) error {
