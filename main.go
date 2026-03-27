@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/clustering"
-	"github.com/kont1n/face-grouper/internal/describer"
 	"github.com/kont1n/face-grouper/internal/extractor"
 	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/organizer"
@@ -20,21 +18,22 @@ import (
 	"github.com/kont1n/face-grouper/internal/web"
 )
 
-type appConfig struct {
-	LMStudio describer.Config `json:"lm_studio"`
-}
-
 func main() {
 	inputDir := flag.String("input", "./dataset", "path to directory with photos")
 	outputDir := flag.String("output", "./output", "path for grouped output")
 	workers := flag.Int("workers", 4, "number of parallel extraction workers")
+	gpuDetSessions := flag.Int("gpu-det-sessions", 2, "number of detector ONNX sessions for GPU mode")
+	gpuRecSessions := flag.Int("gpu-rec-sessions", 2, "number of recognizer ONNX sessions for GPU mode")
+	embedBatchSize := flag.Int("embed-batch-size", 64, "cross-file recognition batch size")
+	embedFlushMS := flag.Int("embed-flush-ms", 10, "embedding batch flush timeout in milliseconds")
 	threshold := flag.Float64("threshold", 0.5, "cosine similarity threshold for face grouping")
 	gpu := flag.Bool("gpu", false, "use GPU (CUDA) for ONNX Runtime inference")
+	intraThreads := flag.Int("intra-threads", 0, "ONNX Runtime intra-op threads (0 = default)")
+	interThreads := flag.Int("inter-threads", 0, "ONNX Runtime inter-op threads (0 = default)")
 	maxDim := flag.Int("max-dim", 1920, "downscale images so longest side <= this value (0 = no resize)")
 	serve := flag.Bool("serve", false, "start web UI after processing")
 	port := flag.Int("port", 8080, "web UI port")
-	describe := flag.Bool("describe", false, "generate person descriptions via LM Studio (Moondream2)")
-	configPath := flag.String("config", "config.json", "path to config file")
+	avatarUpdateThreshold := flag.Float64("avatar-update-threshold", 0.10, "minimum relative quality increase required to update avatar (0.10 = 10%)")
 	viewOnly := flag.Bool("view", false, "only start web UI without processing (requires previous output)")
 	modelsDir := flag.String("models-dir", "./models", "path to directory with ONNX models (det_10g.onnx, w600k_r50.onnx)")
 	ortLib := flag.String("ort-lib", "", "path to ONNX Runtime shared library (auto-detected if empty)")
@@ -48,6 +47,11 @@ func main() {
 		}
 		return
 	}
+
+	inference.SetSessionTuning(inference.SessionTuning{
+		IntraOpThreads: *intraThreads,
+		InterOpThreads: *interThreads,
+	})
 
 	if err := inference.InitORT(*ortLib); err != nil {
 		log.Fatalf("ONNX Runtime init error: %v", err)
@@ -66,14 +70,17 @@ func main() {
 	w := io.MultiWriter(os.Stdout, logFile)
 
 	start := time.Now()
+	stageDurations := make(map[string]time.Duration)
 
 	// --- Scan ---
+	stageStart := time.Now()
 	fmt.Fprintf(w, "=== Scanning directory ===\n")
 	files, err := scanner.Scan(*inputDir)
 	if err != nil {
 		log.Fatalf("scan error: %v", err)
 	}
 	fmt.Fprintf(w, "Found %d image(s)\n\n", len(files))
+	stageDurations["scan"] = time.Since(stageStart)
 
 	if len(files) == 0 {
 		fmt.Fprintf(w, "No images found, nothing to do.\n")
@@ -90,6 +97,7 @@ func main() {
 	}
 
 	// --- Extract ---
+	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
 	if *gpu {
 		fmt.Fprintf(w, "Mode: GPU (CUDA)\n")
@@ -101,18 +109,23 @@ func main() {
 	}
 
 	extractCfg := extractor.Config{
-		ModelsDir: *modelsDir,
-		Workers:   *workers,
-		GPU:       *gpu,
-		ThumbDir:  thumbDir,
-		MaxDim:    *maxDim,
-		DetThresh: float32(*detThresh),
+		ModelsDir:      *modelsDir,
+		Workers:        *workers,
+		GPU:            *gpu,
+		GPUDetSessions: *gpuDetSessions,
+		GPURecSessions: *gpuRecSessions,
+		EmbedBatchSize: *embedBatchSize,
+		EmbedFlushMS:   *embedFlushMS,
+		ThumbDir:       thumbDir,
+		MaxDim:         *maxDim,
+		DetThresh:      float32(*detThresh),
 	}
 	extractResult, err := extractor.Extract(files, extractCfg, w)
 	if err != nil {
 		log.Fatalf("extraction error: %v", err)
 	}
 	fmt.Fprintf(w, "\nTotal faces detected: %d (errors: %d)\n\n", len(extractResult.Faces), extractResult.ErrorCount)
+	stageDurations["extract"] = time.Since(stageStart)
 
 	if len(extractResult.Faces) == 0 {
 		fmt.Fprintf(w, "No faces found, nothing to group.\n")
@@ -120,16 +133,20 @@ func main() {
 	}
 
 	// --- Cluster ---
+	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Clustering faces ===\n")
 	clusters := clustering.Cluster(extractResult.Faces, *threshold)
 	fmt.Fprintf(w, "Found %d person(s)\n\n", len(clusters))
+	stageDurations["cluster"] = time.Since(stageStart)
 
 	// --- Organize ---
+	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Organizing output ===\n")
-	persons, err := organizer.Organize(clusters, *outputDir, w)
+	persons, err := organizer.Organize(clusters, *outputDir, *avatarUpdateThreshold, w)
 	if err != nil {
 		log.Fatalf("organizer error: %v", err)
 	}
+	stageDurations["organize_avatar"] = time.Since(stageStart)
 
 	// --- Build report ---
 	rpt := &report.Report{
@@ -147,36 +164,14 @@ func main() {
 
 	for _, p := range persons {
 		rpt.Persons = append(rpt.Persons, report.PersonReport{
-			ID:         p.ID,
-			PhotoCount: p.PhotoCount,
-			FaceCount:  p.FaceCount,
-			Thumbnail:  p.Thumbnail,
-			Photos:     p.Photos,
+			ID:           p.ID,
+			PhotoCount:   p.PhotoCount,
+			FaceCount:    p.FaceCount,
+			Thumbnail:    p.Thumbnail,
+			AvatarPath:   p.AvatarPath,
+			QualityScore: p.QualityScore,
+			Photos:       p.Photos,
 		})
-	}
-
-	// --- Describe via Moondream2 ---
-	if *describe {
-		appCfg, cfgErr := loadConfig(*configPath)
-		if cfgErr != nil {
-			fmt.Fprintf(w, "\nWARNING: cannot load config %s: %v — skipping descriptions\n", *configPath, cfgErr)
-		} else {
-			fmt.Fprintf(w, "\n=== Generating person descriptions (Moondream2) ===\n")
-			fmt.Fprintf(w, "Endpoint: %s, Model: %s\n", appCfg.LMStudio.Endpoint, appCfg.LMStudio.Model)
-			for i, p := range rpt.Persons {
-				if p.Thumbnail == "" {
-					continue
-				}
-				thumbPath := filepath.Join(*outputDir, p.Thumbnail)
-				desc, descErr := describer.Describe(appCfg.LMStudio, thumbPath)
-				if descErr != nil {
-					fmt.Fprintf(w, "Person_%d: error: %v\n", p.ID, descErr)
-					continue
-				}
-				rpt.Persons[i].Description = desc
-				fmt.Fprintf(w, "Person_%d: %s\n", p.ID, desc)
-			}
-		}
 	}
 
 	// --- Finalize report ---
@@ -194,6 +189,11 @@ func main() {
 	fmt.Fprintf(w, "Persons: %d\n", rpt.TotalPersons)
 	fmt.Fprintf(w, "Errors:  %d\n", rpt.Errors)
 	fmt.Fprintf(w, "Time:    %s\n", rpt.Duration)
+	fmt.Fprintf(w, "\n=== Stage timings ===\n")
+	fmt.Fprintf(w, "Scan:           %s\n", stageDurations["scan"].Round(time.Millisecond))
+	fmt.Fprintf(w, "Extract:        %s\n", stageDurations["extract"].Round(time.Millisecond))
+	fmt.Fprintf(w, "Cluster:        %s\n", stageDurations["cluster"].Round(time.Millisecond))
+	fmt.Fprintf(w, "OrganizeAvatar: %s\n", stageDurations["organize_avatar"].Round(time.Millisecond))
 	fmt.Fprintf(w, "Report:  %s\n", filepath.Join(*outputDir, "report.json"))
 	fmt.Fprintf(w, "Log:     %s\n", filepath.Join(*outputDir, "processing.log"))
 
@@ -206,16 +206,4 @@ func main() {
 	} else {
 		fmt.Fprintf(w, "\nTip: run with --serve to view results in browser, or --view to view previous results\n")
 	}
-}
-
-func loadConfig(path string) (*appConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var cfg appConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
 }

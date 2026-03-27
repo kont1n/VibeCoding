@@ -2,6 +2,7 @@ package inference
 
 import (
 	"fmt"
+	"image"
 	"math"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -79,26 +80,29 @@ func (r *Recognizer) GetEmbeddings(faces []gocv.Mat) ([][]float64, error) {
 	batchSize := int64(len(faces))
 	h := int64(r.inputSize)
 	w := int64(r.inputSize)
-	planeSize := h * w
+	blobMat := gocv.NewMat()
+	defer blobMat.Close()
 
-	blob := make([]float32, batchSize*3*planeSize)
-	for b := 0; b < int(batchSize); b++ {
-		face := faces[b]
-		offset := int64(b) * 3 * planeSize
-		ch := face.Channels()
-		for y := 0; y < int(h); y++ {
-			for x := 0; x < int(w); x++ {
-				off := int64(y)*w + int64(x)
-				bv := float32(face.GetUCharAt(y, x*ch+0))
-				gv := float32(face.GetUCharAt(y, x*ch+1))
-				rv := float32(face.GetUCharAt(y, x*ch+2))
-
-				blob[offset+0*planeSize+off] = (rv - r.inputMean) / r.inputStd
-				blob[offset+1*planeSize+off] = (gv - r.inputMean) / r.inputStd
-				blob[offset+2*planeSize+off] = (bv - r.inputMean) / r.inputStd
-			}
-		}
+	gocv.BlobFromImages(
+		faces,
+		&blobMat,
+		1.0/float64(r.inputStd),
+		image.Point{X: r.inputSize, Y: r.inputSize},
+		gocv.NewScalar(float64(r.inputMean), float64(r.inputMean), float64(r.inputMean), 0),
+		true,
+		false,
+		gocv.MatTypeCV32F,
+	)
+	if blobMat.Empty() {
+		return nil, fmt.Errorf("recognizer blob prep: empty blob")
 	}
+
+	blobPtr, err := blobMat.DataPtrFloat32()
+	if err != nil {
+		return nil, fmt.Errorf("recognizer blob prep: %w", err)
+	}
+	blob := make([]float32, len(blobPtr))
+	copy(blob, blobPtr)
 
 	inputShape := ort.NewShape(batchSize, 3, h, w)
 	inputTensor, err := ort.NewTensor(inputShape, blob)

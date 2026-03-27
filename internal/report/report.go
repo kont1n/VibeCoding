@@ -8,14 +8,14 @@ import (
 )
 
 type Report struct {
-	StartedAt    time.Time      `json:"started_at"`
-	FinishedAt   time.Time      `json:"finished_at"`
-	Duration     string         `json:"duration"`
-	InputDir     string         `json:"input_dir"`
-	OutputDir    string         `json:"output_dir"`
-	TotalImages  int            `json:"total_images"`
-	TotalFaces   int            `json:"total_faces"`
-	TotalPersons int            `json:"total_persons"`
+	StartedAt    time.Time         `json:"started_at"`
+	FinishedAt   time.Time         `json:"finished_at"`
+	Duration     string            `json:"duration"`
+	InputDir     string            `json:"input_dir"`
+	OutputDir    string            `json:"output_dir"`
+	TotalImages  int               `json:"total_images"`
+	TotalFaces   int               `json:"total_faces"`
+	TotalPersons int               `json:"total_persons"`
 	Errors       int               `json:"errors"`
 	FileErrors   map[string]string `json:"file_errors,omitempty"`
 	Threshold    float64           `json:"threshold"`
@@ -24,12 +24,13 @@ type Report struct {
 }
 
 type PersonReport struct {
-	ID          int      `json:"id"`
-	PhotoCount  int      `json:"photo_count"`
-	FaceCount   int      `json:"face_count"`
-	Thumbnail   string   `json:"thumbnail"`
-	Description string   `json:"description,omitempty"`
-	Photos      []string `json:"photos"`
+	ID           int      `json:"id"`
+	PhotoCount   int      `json:"photo_count"`
+	FaceCount    int      `json:"face_count"`
+	Thumbnail    string   `json:"thumbnail"`
+	AvatarPath   string   `json:"avatar_path,omitempty"`
+	QualityScore float64  `json:"quality_score,omitempty"`
+	Photos       []string `json:"photos"`
 }
 
 func Save(r *Report, outputDir string) error {

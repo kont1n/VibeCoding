@@ -144,7 +144,10 @@ func (d *Detector) Detect(img gocv.Mat) ([]Detection, error) {
 	resized.CopyTo(&roi)
 	roi.Close()
 
-	blob := imgToNCHW(detImg, 127.5, 128.0)
+	blob, err := blobFromMatNCHW(detImg, 127.5, 128.0)
+	if err != nil {
+		return nil, fmt.Errorf("detector blob prep: %w", err)
+	}
 
 	inputShape := ort.NewShape(1, 3, d.inputH, d.inputW)
 	inputTensor, err := ort.NewTensor(inputShape, blob)
@@ -247,26 +250,31 @@ func (d *Detector) getAnchorCenters(height, width, stride int) [][2]float32 {
 	return centers
 }
 
-// imgToNCHW converts a BGR gocv.Mat to a float32 NCHW blob with
-// normalization: (pixel - mean) / std, and BGR->RGB channel swap.
-func imgToNCHW(img gocv.Mat, mean, std float32) []float32 {
-	rows := img.Rows()
-	cols := img.Cols()
-	ch := img.Channels()
-	planeSize := rows * cols
-	blob := make([]float32, 3*planeSize)
-
-	for y := 0; y < rows; y++ {
-		for x := 0; x < cols; x++ {
-			off := y*cols + x
-			b := float32(img.GetUCharAt(y, x*ch+0))
-			g := float32(img.GetUCharAt(y, x*ch+1))
-			r := float32(img.GetUCharAt(y, x*ch+2))
-
-			blob[0*planeSize+off] = (r - mean) / std
-			blob[1*planeSize+off] = (g - mean) / std
-			blob[2*planeSize+off] = (b - mean) / std
-		}
+// blobFromMatNCHW converts a BGR mat to float32 NCHW blob:
+// (pixel - mean) / std and BGR->RGB channel swap.
+func blobFromMatNCHW(img gocv.Mat, mean, std float32) ([]float32, error) {
+	if img.Empty() {
+		return nil, fmt.Errorf("empty input mat")
 	}
-	return blob
+	if std == 0 {
+		return nil, fmt.Errorf("std must be non-zero")
+	}
+
+	blob := gocv.BlobFromImage(
+		img,
+		1.0/float64(std),
+		image.Point{X: img.Cols(), Y: img.Rows()},
+		gocv.NewScalar(float64(mean), float64(mean), float64(mean), 0),
+		true,
+		false,
+	)
+	defer blob.Close()
+
+	data, err := blob.DataPtrFloat32()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]float32, len(data))
+	copy(out, data)
+	return out, nil
 }

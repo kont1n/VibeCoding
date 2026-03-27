@@ -10,11 +10,12 @@ import (
 
 // Face represents a single detected face with its embedding vector.
 type Face struct {
-	BBox      [4]float64 `json:"bbox"`
-	Embedding []float64  `json:"-"`
-	DetScore  float64    `json:"det_score"`
-	Thumbnail string     `json:"thumbnail,omitempty"`
-	FilePath  string     `json:"-"`
+	BBox      [4]float64    `json:"bbox"`
+	Keypoints [5][2]float64 `json:"-"`
+	Embedding []float64     `json:"-"`
+	DetScore  float64       `json:"det_score"`
+	Thumbnail string        `json:"thumbnail,omitempty"`
+	FilePath  string        `json:"-"`
 }
 
 func (f *Face) UnmarshalJSON(data []byte) error {

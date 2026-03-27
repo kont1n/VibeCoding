@@ -1,6 +1,6 @@
 # Face Grouping Service
 
-Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, описания через LM Studio (Moondream2) и веб-интерфейс для просмотра результатов.
+Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, алгоритмический выбор аватара (без LM Studio) и веб-интерфейс для просмотра результатов.
 
 ## Как это работает
 
@@ -14,8 +14,8 @@ flowchart LR
     F --> G["Организация\nPerson_N/ + thumb.jpg"]
     G --> H["report.json\n+ processing.log"]
     H --> I["Web UI\n:8080"]
-    H -.->|"--describe"| J["LM Studio\nMoondream2"]
-    J -.-> H
+    G --> J["Оценка качества лица\n(Area × Sharpness × FrontalPose)"]
+    J --> H
 ```
 
 ### Пайплайн
@@ -27,8 +27,8 @@ flowchart LR
 5. **Генерация миниатюр** — для каждого обнаруженного лица вырезается crop с паддингом 25%, масштабируется до 160x160 и сохраняется как JPEG (quality 90)
 6. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
 7. **Организация** — для каждого кластера создается папка `Person_N/` с символическими ссылками на оригиналы и лучшей миниатюрой лица (`thumb.jpg`); при совпадающих именах файлов применяется уникализация
-8. **Описание (опционально)** — миниатюра отправляется в LM Studio (Moondream2) для генерации текстового описания внешности, с retry для временных HTTP-ошибок (`429/5xx`)
-9. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`)
+8. **Выбор аватара** — для каждой персоны выбирается лучший crop по формуле `Score = Area × Sharpness × FrontalPoseFactor`; обновление выполняется только при приросте качества выше порога
+9. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`) c `avatar_path` и `quality_score`
 10. **Веб-интерфейс (опционально)** — Go HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов в браузере
 
 > Если на фото несколько людей — оно появится в нескольких папках `Person_N/`.
@@ -123,7 +123,7 @@ CGO_ENABLED=1 CC=gcc CXX=g++ \
 - при необходимости доустанавливает актуальные CUDA/cuDNN DLL через `pip`;
 - запускает `face-grouper.exe` с `--gpu`, `--ort-lib` и корректным `--models-dir`.
 
-Полезные параметры скрипта: `-InputDir`, `-OutputDir`, `-ModelsDir`, `-OrtVersion`, `-Msys2Bin`, `-SkipNvidiaRuntimeInstall`, `-Serve`, `-Describe`.
+Полезные параметры скрипта: `-InputDir`, `-OutputDir`, `-ModelsDir`, `-OrtVersion`, `-Msys2Bin`, `-SkipNvidiaRuntimeInstall`, `-Serve`, `-GpuDetSessions`, `-GpuRecSessions`, `-EmbedBatchSize`, `-EmbedFlushMs`, `-AvatarUpdateThreshold`, `-IntraThreads`, `-InterThreads`.
 
 ```powershell
 # Базовый GPU запуск
@@ -132,8 +132,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1
 # GPU + веб-интерфейс
 powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Serve
 
-# GPU + описания + веб
-powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Describe -Serve
+# Агрессивный тюнинг батчей/сессий
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -GpuDetSessions 3 -GpuRecSessions 3 -EmbedBatchSize 96 -EmbedFlushMs 8 -IntraThreads 0 -InterThreads 0
 
 # Кастомные вход/выход
 powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -InputDir .\photos -OutputDir .\results
@@ -156,11 +156,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Serve
 # GPU + веб-интерфейс
 ./face-grouper --gpu --serve
 
-# GPU + описания через Moondream2 + веб
-./face-grouper --gpu --describe --serve
-
 # Все параметры
-./face-grouper --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --max-dim 2560 --serve --port 3000
+./face-grouper --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --max-dim 2560 --serve --port 3000 --avatar-update-threshold 0.10
 
 # Просмотр предыдущих результатов без повторной обработки
 ./face-grouper --view --output ./output
@@ -177,7 +174,7 @@ go test ./internal/scanner ./internal/report ./internal/clustering -count=1
 ### Compile-check пакетов без CGO
 
 ```bash
-go test ./internal/organizer ./internal/describer ./internal/web -count=1
+go test ./internal/avatar ./internal/organizer ./internal/web -count=1
 ```
 
 ### Benchmark кластеризации
@@ -190,7 +187,7 @@ go test ./internal/clustering -bench BenchmarkCluster512D -benchmem -run ^$
 
 В репозитории настроен workflow `.github/workflows/ci.yml`, который запускается на `push` и `pull_request` и выполняет:
 - unit-тесты `scanner/report/clustering`
-- compile-check `organizer/describer/web`
+- compile-check `avatar/organizer/web`
 
 ### Параметры CLI
 
@@ -201,14 +198,19 @@ go test ./internal/clustering -bench BenchmarkCluster512D -benchmem -run ^$
 | `--models-dir` | `./models` | Директория с ONNX-моделями (det_10g.onnx, w600k_r50.onnx) |
 | `--ort-lib` | *авто* | Путь к ONNX Runtime shared library |
 | `--workers` | `4` | Количество параллельных воркеров |
+| `--gpu-det-sessions` | `2` | Количество detector-сессий в GPU режиме |
+| `--gpu-rec-sessions` | `2` | Количество recognizer-сессий в GPU режиме |
+| `--embed-batch-size` | `64` | Размер межфайлового батча распознавания лиц |
+| `--embed-flush-ms` | `10` | Таймаут flush батча распознавания (мс) |
 | `--threshold` | `0.5` | Порог косинусного сходства для объединения лиц (0.0–1.0) |
 | `--det-thresh` | `0.5` | Порог уверенности детекции лиц |
 | `--gpu` | `false` | Использовать CUDA GPU для ONNX Runtime |
+| `--intra-threads` | `0` | Intra-op потоки ONNX Runtime (0 = default) |
+| `--inter-threads` | `0` | Inter-op потоки ONNX Runtime (0 = default) |
 | `--max-dim` | `1920` | Уменьшать изображения до N px по длинной стороне (0 = без ресайза) |
+| `--avatar-update-threshold` | `0.10` | Минимальный относительный прирост quality score для обновления аватара |
 | `--serve` | `false` | Запустить веб-интерфейс после обработки |
 | `--port` | `8080` | Порт веб-сервера |
-| `--describe` | `false` | Генерировать описания через LM Studio (Moondream2) |
-| `--config` | `config.json` | Путь к файлу конфигурации |
 | `--view` | `false` | Только просмотр результатов (без обработки) |
 
 ### Пример вывода
@@ -246,34 +248,25 @@ Log:     ./output/processing.log
 Tip: run with --serve to view results in browser, or --view to view previous results
 ```
 
-## Конфигурация
+## Алгоритмический выбор аватара
 
-Файл `config.json` содержит настройки для интеграции с LM Studio:
+Для каждой персоны вычисляется quality score по формуле:
 
-```json
-{
-  "lm_studio": {
-    "endpoint": "http://localhost:1234/v1",
-    "model": "moondream2",
-    "max_tokens": 200
-  }
-}
-```
+`Score = (Width * Height) * Sharpness * FrontalPoseFactor`
 
-| Поле | Описание |
-|------|----------|
-| `endpoint` | URL OpenAI-совместимого API (LM Studio по умолчанию на порту 1234) |
-| `model` | Название модели в LM Studio (загрузите `moondream2` через интерфейс LM Studio) |
-| `max_tokens` | Максимальное количество токенов в описании |
+- `Width * Height` — площадь лица по bbox.
+- `Sharpness` — дисперсия лапласиана по crop лица.
+- `FrontalPoseFactor` — фактор фронтальности (по landmark-геометрии, ближе к 1 при меньшем повороте).
 
-Для использования: запустите LM Studio, загрузите модель Moondream2 и добавьте флаг `--describe` при запуске.
+Если при повторной обработке новый score не превосходит предыдущий минимум на `--avatar-update-threshold` (по умолчанию 10%), аватар не обновляется.
 
 ## Веб-интерфейс
 
 Встроенный HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов:
 
 - Сетка карточек персон с миниатюрами лиц и количеством фото
-- Описание внешности (при использовании `--describe`)
+- Отображение выбранного алгоритмом аватара
+- Показ `quality_score` для контроля качества выбора
 - Просмотр всех фотографий персоны по клику с превью лица в заголовке
 - Кликабельный счётчик ошибок с детализацией (имя файла + текст ошибки)
 - Полноэкранный просмотр фото
@@ -290,7 +283,6 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 │       └── ci.yml                    # CI: unit tests + compile-check
 ├── main.go                            # Точка входа, CLI-флаги, оркестрация пайплайна
 ├── go.mod
-├── config.json                        # Конфигурация LM Studio / Moondream2
 ├── scripts/
 │   ├── build.ps1                      # Сборка под Windows/MSYS2 (CGO/OpenCV)
 │   └── run-gpu.ps1                    # Автоподготовка зависимостей и запуск GPU
@@ -319,8 +311,8 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 │   ├── report/
 │   │   ├── report.go                  # Генерация и загрузка JSON-отчёта
 │   │   └── report_test.go             # Unit tests
-│   ├── describer/
-│   │   └── describer.go               # Клиент LM Studio Vision API (Moondream2)
+│   ├── avatar/
+│   │   └── score.go                   # Оценка качества лица и frontal-factor
 │   └── web/
 │       ├── web.go                     # HTTP-сервер
 │       └── index.html                 # Встроенный веб-интерфейс (go:embed)
@@ -351,9 +343,9 @@ ONNX Runtime Go-биндинги для прямого запуска модел
 
 ### `internal/extractor` — оркестрация extraction pipeline
 
-Worker pool из горутин, каждый worker: загрузка изображения (gocv) → опциональный downscale (--max-dim) → SCRFD детекция → alignment по keypoints → ArcFace embedding → сохранение thumbnail (crop + resize 160x160, JPEG q90).
+Worker pool из горутин, каждый worker: загрузка изображения (gocv) → опциональный downscale (`--max-dim`) → SCRFD детекция → alignment по keypoints → отправка aligned-лиц в межфайловый batcher распознавания (`--embed-batch-size`, `--embed-flush-ms`) → сохранение thumbnail (crop + resize 160x160, JPEG q90).
 
-CPU-режим использует отдельные ONNX-сессии на воркер. GPU-режим использует shared сессии с синхронизацией inference-вызовов.
+CPU-режим использует пул ONNX-сессий размером `workers`. GPU-режим использует отдельные пулы detector/recognizer сессий (`--gpu-det-sessions`, `--gpu-rec-sessions`) без глобальной блокировки inference.
 
 ### `internal/models` — типы данных
 
@@ -366,15 +358,11 @@ CPU-режим использует отдельные ONNX-сессии на в
 
 ### `internal/organizer` — организация результатов
 
-Создает директории `output/Person_N/`, сортирует кластеры по размеру. Создает символические ссылки на оригиналы (fallback на stream-copy). Выбирает лучшую миниатюру лица (максимальный `det_score`) и копирует как `thumb.jpg`. При коллизиях имён файлов применяется уникализация.
+Создает директории `output/Person_N/`, сортирует кластеры по размеру. Создает символические ссылки на оригиналы (fallback на stream-copy). Выбирает лучший аватар по quality score (`Area × Sharpness × FrontalPoseFactor`) и сохраняет в `output/avatars/`. При коллизиях имён файлов применяется уникализация.
 
 ### `internal/report` — отчёт
 
 Структурированный JSON-отчёт с метриками обработки.
-
-### `internal/describer` — описание внешности
-
-Клиент OpenAI-совместимого Vision API. Отправляет миниатюру лица в LM Studio (Moondream2), валидирует endpoint/model и повторяет запросы при временных ошибках (`429/5xx`, сетевые сбои).
 
 ### `internal/web` — веб-интерфейс
 

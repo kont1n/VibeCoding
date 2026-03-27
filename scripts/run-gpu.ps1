@@ -5,14 +5,19 @@ param(
     [Alias("Output")]
     [string]$OutputDir = "./output",
     [int]$Workers = 4,
+    [int]$GpuDetSessions = 2,
+    [int]$GpuRecSessions = 2,
+    [int]$EmbedBatchSize = 64,
+    [int]$EmbedFlushMs = 10,
     [double]$Threshold = 0.5,
     [double]$DetThresh = 0.5,
+    [double]$AvatarUpdateThreshold = 0.10,
+    [int]$IntraThreads = 0,
+    [int]$InterThreads = 0,
     [int]$MaxDim = 1920,
     [switch]$Serve,
     [int]$Port = 8080,
-    [switch]$Describe,
     [switch]$View,
-    [string]$Config = "config.json",
     [string]$ModelsDir = "",
     [string]$Msys2Bin = "",
     [string]$OrtVersion = "",
@@ -399,11 +404,17 @@ try {
         "--input", $InputDir,
         "--output", $OutputDir,
         "--workers", $Workers.ToString($inv),
+        "--gpu-det-sessions", $GpuDetSessions.ToString($inv),
+        "--gpu-rec-sessions", $GpuRecSessions.ToString($inv),
+        "--embed-batch-size", $EmbedBatchSize.ToString($inv),
+        "--embed-flush-ms", $EmbedFlushMs.ToString($inv),
         "--threshold", $Threshold.ToString($inv),
         "--det-thresh", $DetThresh.ToString($inv),
+        "--avatar-update-threshold", $AvatarUpdateThreshold.ToString($inv),
+        "--intra-threads", $IntraThreads.ToString($inv),
+        "--inter-threads", $InterThreads.ToString($inv),
         "--max-dim", $MaxDim.ToString($inv),
         "--port", $Port.ToString($inv),
-        "--config", $Config,
         "--gpu",
         "--ort-lib", $ortLibPath
     )
@@ -413,9 +424,6 @@ try {
     }
     if ($Serve) {
         $launchArgs += "--serve"
-    }
-    if ($Describe) {
-        $launchArgs += "--describe"
     }
     if ($View) {
         $launchArgs += "--view"

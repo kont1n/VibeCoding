@@ -30,12 +30,13 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		GPU:       true,
 		Persons: []PersonReport{
 			{
-				ID:          1,
-				PhotoCount:  12,
-				FaceCount:   21,
-				Thumbnail:   "Person_1/thumb.jpg",
-				Description: "test",
-				Photos:      []string{"Person_1/a.jpg", "Person_1/b.jpg"},
+				ID:           1,
+				PhotoCount:   12,
+				FaceCount:    21,
+				Thumbnail:    "Person_1/thumb.jpg",
+				AvatarPath:   "avatars/Person_1.jpg",
+				QualityScore: 12345.67,
+				Photos:       []string{"Person_1/a.jpg", "Person_1/b.jpg"},
 			},
 		},
 	}

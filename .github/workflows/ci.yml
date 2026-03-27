@@ -26,4 +26,4 @@ jobs:
 
       - name: Compile check (non-CGO packages)
         run: |
-          go test ./internal/organizer ./internal/describer ./internal/web -count=1
+          go test ./internal/avatar ./internal/organizer ./internal/web -count=1

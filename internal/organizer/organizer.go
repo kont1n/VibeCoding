@@ -3,28 +3,54 @@ package organizer
 import (
 	"fmt"
 	"hash/fnv"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/kont1n/face-grouper/internal/avatar"
 	"github.com/kont1n/face-grouper/internal/models"
+	"github.com/kont1n/face-grouper/internal/report"
 )
 
 // PersonInfo holds metadata about an organized person cluster for the report.
 type PersonInfo struct {
-	ID         int
-	PhotoCount int
-	FaceCount  int
-	Thumbnail  string
-	Photos     []string
+	ID           int
+	PhotoCount   int
+	FaceCount    int
+	Thumbnail    string
+	AvatarPath   string
+	QualityScore float64
+	Photos       []string
+}
+
+type previousAvatar struct {
+	avatarPath string
+	quality    float64
 }
 
 // Organize creates Person_N directories under outputDir, symlinks photos, and picks
 // the best face thumbnail per person. Returns metadata for each person cluster.
-func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]PersonInfo, error) {
-	// Clean only Person_* dirs and old report — preserve .thumbnails and logs
+func Organize(clusters []models.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
+	if avatarUpdateThreshold < 0 {
+		avatarUpdateThreshold = 0
+	}
+
+	prev := make(map[int]previousAvatar)
+	if oldReport, err := report.Load(outputDir); err == nil {
+		for _, p := range oldReport.Persons {
+			prev[p.ID] = previousAvatar{
+				avatarPath: p.AvatarPath,
+				quality:    p.QualityScore,
+			}
+		}
+	}
+
+	// Clean only Person_* dirs and old report — preserve .thumbnails, avatars and logs
 	if entries, err := os.ReadDir(outputDir); err == nil {
 		for _, e := range entries {
 			name := e.Name()
@@ -36,6 +62,10 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create output dir: %w", err)
+	}
+	avatarsDir := filepath.Join(outputDir, "avatars")
+	if err := os.MkdirAll(avatarsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create avatars dir: %w", err)
 	}
 
 	sort.Slice(clusters, func(i, j int) bool {
@@ -68,9 +98,12 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 				photos = append(photos, personName+"/"+fileName)
 			}
 
-			if face.DetScore > bestScore && face.Thumbnail != "" {
-				bestScore = face.DetScore
-				bestThumb = face.Thumbnail
+			if face.Thumbnail != "" {
+				faceScore := scoreFace(face)
+				if faceScore > bestScore {
+					bestScore = faceScore
+					bestThumb = face.Thumbnail
+				}
 			}
 		}
 
@@ -84,18 +117,97 @@ func Organize(clusters []models.Cluster, outputDir string, w io.Writer) ([]Perso
 			}
 		}
 
+		personID := i + 1
+		prevAvatar := prev[personID]
+		avatarRel := prevAvatar.avatarPath
+		avatarScore := prevAvatar.quality
+
+		if avatarRel != "" {
+			avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
+			if _, err := os.Stat(avatarAbs); err != nil {
+				avatarRel = ""
+				avatarScore = 0
+			}
+		}
+
+		if bestThumb != "" {
+			shouldUpdate := false
+			if avatarRel == "" || avatarScore <= 0 {
+				shouldUpdate = true
+			} else if bestScore >= avatarScore*(1.0+avatarUpdateThreshold) {
+				shouldUpdate = true
+			}
+
+			if shouldUpdate {
+				avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d.jpg", personID)))
+				avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
+				if err := copyFile(bestThumb, avatarAbs); err != nil {
+					fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
+				} else {
+					avatarScore = bestScore
+				}
+			}
+		}
+
+		if avatarRel == "" && thumbRel != "" {
+			avatarRel = thumbRel
+			if avatarScore <= 0 {
+				avatarScore = bestScore
+			}
+		}
+
 		persons = append(persons, PersonInfo{
-			ID:         i + 1,
-			PhotoCount: len(seen),
-			FaceCount:  len(cluster.Faces),
-			Thumbnail:  thumbRel,
-			Photos:     photos,
+			ID:           personID,
+			PhotoCount:   len(seen),
+			FaceCount:    len(cluster.Faces),
+			Thumbnail:    thumbRel,
+			AvatarPath:   avatarRel,
+			QualityScore: avatarScore,
+			Photos:       photos,
 		})
 
-		fmt.Fprintf(w, "Person_%d: %d unique photo(s)\n", i+1, len(seen))
+		fmt.Fprintf(w, "Person_%d: %d unique photo(s)\n", personID, len(seen))
 	}
 
 	return persons, nil
+}
+
+func scoreFace(face models.Face) float64 {
+	if face.Thumbnail == "" {
+		return 0
+	}
+	f, err := os.Open(face.Thumbnail)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return 0
+	}
+
+	box := avatar.Box{
+		X1: face.BBox[0],
+		Y1: face.BBox[1],
+		X2: face.BBox[2],
+		Y2: face.BBox[3],
+	}
+
+	frontalFactor := 1.0
+	if hasKeypoints(face.Keypoints) {
+		frontalFactor = avatar.EstimateFrontalPoseFactorFromKeypoints(face.Keypoints)
+	}
+	return avatar.CalculateFaceScoreWithFrontal(img, box, frontalFactor)
+}
+
+func hasKeypoints(kps [5][2]float64) bool {
+	for i := 0; i < 5; i++ {
+		if kps[i][0] != 0 || kps[i][1] != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func linkOrCopy(src, dst string) error {

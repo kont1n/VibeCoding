@@ -2,11 +2,13 @@ package extractor
 
 import (
 	"fmt"
+	"hash/fnv"
 	"image"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gocv.io/x/gocv"
 
@@ -16,13 +18,17 @@ import (
 
 // Config holds extractor settings.
 type Config struct {
-	ModelsDir string
-	Workers   int
-	GPU       bool
-	ThumbDir  string
-	MaxDim    int
-	DetThresh float32
-	NMSThresh float32
+	ModelsDir      string
+	Workers        int
+	GPU            bool
+	GPUDetSessions int
+	GPURecSessions int
+	EmbedBatchSize int
+	EmbedFlushMS   int
+	ThumbDir       string
+	MaxDim         int
+	DetThresh      float32
+	NMSThresh      float32
 }
 
 // Result aggregates extraction output and error statistics.
@@ -52,117 +58,105 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 		faces []models.Face
 		err   error
 	}
-	type workerRuntime struct {
-		det     *inference.Detector
-		rec     *inference.Recognizer
-		recSize int
-		inferMu *sync.Mutex
-	}
 
 	workers := cfg.Workers
 	if workers <= 0 {
 		workers = 1
 	}
-	runtimes := make([]workerRuntime, workers)
-
+	detSessions := workers
+	recSessions := workers
 	if cfg.GPU {
+		detSessions = cfg.GPUDetSessions
+		recSessions = cfg.GPURecSessions
+		if detSessions <= 0 {
+			detSessions = min(workers, 2)
+			if detSessions <= 0 {
+				detSessions = 1
+			}
+		}
+		if recSessions <= 0 {
+			recSessions = min(workers, 2)
+			if recSessions <= 0 {
+				recSessions = 1
+			}
+		}
+	}
+
+	detectors := make([]*inference.Detector, 0, detSessions)
+	recognizers := make([]*inference.Recognizer, 0, recSessions)
+	detPool := make(chan *inference.Detector, detSessions)
+	recPool := make(chan *inference.Recognizer, recSessions)
+
+	closeResources := func() {
+		for _, d := range detectors {
+			if d != nil {
+				d.Close()
+			}
+		}
+		for _, r := range recognizers {
+			if r != nil {
+				r.Close()
+			}
+		}
+	}
+
+	for i := 0; i < detSessions; i++ {
 		det, err := inference.NewDetector(inference.DetectorConfig{
 			ModelPath: detPath,
-			GPU:       true,
+			GPU:       cfg.GPU,
 			DetThresh: cfg.DetThresh,
 			NMSThresh: cfg.NMSThresh,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("init shared detector: %w", err)
+			closeResources()
+			return nil, fmt.Errorf("init detector session %d/%d: %w", i+1, detSessions, err)
 		}
+		detectors = append(detectors, det)
+		detPool <- det
+	}
 
+	var recSize int
+	for i := 0; i < recSessions; i++ {
 		rec, err := inference.NewRecognizer(inference.RecognizerConfig{
 			ModelPath: recPath,
-			GPU:       true,
+			GPU:       cfg.GPU,
 		})
 		if err != nil {
-			det.Close()
-			return nil, fmt.Errorf("init shared recognizer: %w", err)
+			closeResources()
+			return nil, fmt.Errorf("init recognizer session %d/%d: %w", i+1, recSessions, err)
 		}
-
-		recSize := rec.InputSize()
-		inferMu := &sync.Mutex{}
-		for i := range runtimes {
-			runtimes[i] = workerRuntime{
-				det:     det,
-				rec:     rec,
-				recSize: recSize,
-				inferMu: inferMu,
-			}
+		if recSize == 0 {
+			recSize = rec.InputSize()
 		}
-		defer det.Close()
-		defer rec.Close()
-	} else {
-		closeInitialized := func(count int) {
-			for i := 0; i < count; i++ {
-				if runtimes[i].det != nil {
-					runtimes[i].det.Close()
-				}
-				if runtimes[i].rec != nil {
-					runtimes[i].rec.Close()
-				}
-			}
-		}
-
-		for i := range runtimes {
-			det, err := inference.NewDetector(inference.DetectorConfig{
-				ModelPath: detPath,
-				GPU:       false,
-				DetThresh: cfg.DetThresh,
-				NMSThresh: cfg.NMSThresh,
-			})
-			if err != nil {
-				closeInitialized(i)
-				return nil, fmt.Errorf("init detector for worker %d: %w", i+1, err)
-			}
-
-			rec, err := inference.NewRecognizer(inference.RecognizerConfig{
-				ModelPath: recPath,
-				GPU:       false,
-			})
-			if err != nil {
-				det.Close()
-				closeInitialized(i)
-				return nil, fmt.Errorf("init recognizer for worker %d: %w", i+1, err)
-			}
-
-			runtimes[i] = workerRuntime{
-				det:     det,
-				rec:     rec,
-				recSize: rec.InputSize(),
-			}
-		}
-		defer func() {
-			for _, rt := range runtimes {
-				if rt.det != nil {
-					rt.det.Close()
-				}
-				if rt.rec != nil {
-					rt.rec.Close()
-				}
-			}
-		}()
+		recognizers = append(recognizers, rec)
+		recPool <- rec
 	}
+	defer closeResources()
+
+	embedBatchSize := cfg.EmbedBatchSize
+	if embedBatchSize <= 0 {
+		embedBatchSize = 64
+	}
+	embedFlush := time.Duration(cfg.EmbedFlushMS) * time.Millisecond
+	if embedFlush <= 0 {
+		embedFlush = 10 * time.Millisecond
+	}
+	recBatcher := newRecognizerBatcher(recPool, recSessions, embedBatchSize, embedFlush)
+	defer recBatcher.Close()
 
 	jobs := make(chan string, len(files))
 	results := make(chan fileResult, len(files))
 
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
-		rt := runtimes[i]
 		wg.Add(1)
-		go func(rt workerRuntime) {
+		go func() {
 			defer wg.Done()
 			for path := range jobs {
-				faces, err := processImage(path, rt.det, rt.rec, rt.recSize, cfg, rt.inferMu)
+				faces, err := processImage(path, detPool, recBatcher, recSize, cfg)
 				results <- fileResult{path: path, faces: faces, err: err}
 			}
-		}(rt)
+		}()
 	}
 
 	for _, f := range files {
@@ -196,11 +190,10 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 // and optionally saves thumbnails.
 func processImage(
 	imagePath string,
-	det *inference.Detector,
-	rec *inference.Recognizer,
+	detPool chan *inference.Detector,
+	recBatcher *recognizerBatcher,
 	recSize int,
 	cfg Config,
-	inferMu *sync.Mutex,
 ) ([]models.Face, error) {
 	img := gocv.IMRead(imagePath, gocv.IMReadColor)
 	if img.Empty() {
@@ -226,7 +219,7 @@ func processImage(
 	}
 	defer img.Close()
 
-	dets, err := detectWithLock(det, img, inferMu)
+	dets, err := detectWithPool(detPool, img)
 	if err != nil {
 		return nil, fmt.Errorf("detection: %w", err)
 	}
@@ -244,7 +237,7 @@ func processImage(
 		}
 	}()
 
-	embeddings, err := recognizeWithLock(rec, aligned, inferMu)
+	embeddings, err := recBatcher.Infer(aligned)
 	if err != nil {
 		return nil, fmt.Errorf("recognition: %w", err)
 	}
@@ -256,8 +249,15 @@ func processImage(
 			thumb = saveThumbnail(img, d, imagePath, i, cfg.ThumbDir)
 		}
 
+		var keypoints [5][2]float64
+		for k := 0; k < 5; k++ {
+			keypoints[k][0] = float64(d.Kps[k][0])
+			keypoints[k][1] = float64(d.Kps[k][1])
+		}
+
 		faces[i] = models.Face{
 			BBox:      [4]float64{float64(d.X1), float64(d.Y1), float64(d.X2), float64(d.Y2)},
+			Keypoints: keypoints,
 			Embedding: embeddings[i],
 			DetScore:  float64(d.Score),
 			Thumbnail: thumb,
@@ -301,7 +301,7 @@ func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, face
 	base := filepath.Base(imagePath)
 	ext := filepath.Ext(base)
 	name := base[:len(base)-len(ext)]
-	thumbName := fmt.Sprintf("%s_face_%d.jpg", name, faceIdx)
+	thumbName := fmt.Sprintf("%s_%s_face_%d.jpg", name, shortPathHash(imagePath), faceIdx)
 	thumbPath := filepath.Join(thumbDir, thumbName)
 
 	if ok := gocv.IMWriteWithParams(thumbPath, resized, []int{gocv.IMWriteJpegQuality, 90}); !ok {
@@ -310,20 +310,154 @@ func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, face
 	return thumbPath
 }
 
-func detectWithLock(det *inference.Detector, img gocv.Mat, inferMu *sync.Mutex) ([]inference.Detection, error) {
-	if inferMu != nil {
-		inferMu.Lock()
-		defer inferMu.Unlock()
-	}
+func detectWithPool(detPool chan *inference.Detector, img gocv.Mat) ([]inference.Detection, error) {
+	det := <-detPool
+	defer func() { detPool <- det }()
 	return det.Detect(img)
 }
 
-func recognizeWithLock(rec *inference.Recognizer, faces []gocv.Mat, inferMu *sync.Mutex) ([][]float64, error) {
-	if inferMu != nil {
-		inferMu.Lock()
-		defer inferMu.Unlock()
+type recognizeRequest struct {
+	done       chan struct{}
+	embeddings [][]float64
+	remaining  int
+	err        error
+	mu         sync.Mutex
+}
+
+func (r *recognizeRequest) resolve(idx int, embedding []float64, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err != nil && r.err == nil {
+		r.err = err
 	}
-	return rec.GetEmbeddings(faces)
+	if err == nil {
+		r.embeddings[idx] = embedding
+	}
+	r.remaining--
+	if r.remaining == 0 {
+		close(r.done)
+	}
+}
+
+type recognizeItem struct {
+	mat gocv.Mat
+	req *recognizeRequest
+	idx int
+}
+
+type recognizerBatcher struct {
+	items        chan recognizeItem
+	recPool      chan *inference.Recognizer
+	batchSize    int
+	flushTimeout time.Duration
+	closeOnce    sync.Once
+	wg           sync.WaitGroup
+}
+
+func newRecognizerBatcher(recPool chan *inference.Recognizer, workers, batchSize int, flushTimeout time.Duration) *recognizerBatcher {
+	if workers <= 0 {
+		workers = 1
+	}
+	if batchSize <= 0 {
+		batchSize = 64
+	}
+	if flushTimeout <= 0 {
+		flushTimeout = 10 * time.Millisecond
+	}
+	b := &recognizerBatcher{
+		items:        make(chan recognizeItem, batchSize*workers*2),
+		recPool:      recPool,
+		batchSize:    batchSize,
+		flushTimeout: flushTimeout,
+	}
+	for i := 0; i < workers; i++ {
+		b.wg.Add(1)
+		go b.runWorker()
+	}
+	return b
+}
+
+func (b *recognizerBatcher) Infer(mats []gocv.Mat) ([][]float64, error) {
+	if len(mats) == 0 {
+		return nil, nil
+	}
+	req := &recognizeRequest{
+		done:       make(chan struct{}),
+		embeddings: make([][]float64, len(mats)),
+		remaining:  len(mats),
+	}
+	for i, mat := range mats {
+		b.items <- recognizeItem{mat: mat, req: req, idx: i}
+	}
+	<-req.done
+	if req.err != nil {
+		return nil, req.err
+	}
+	return req.embeddings, nil
+}
+
+func (b *recognizerBatcher) Close() {
+	b.closeOnce.Do(func() {
+		close(b.items)
+		b.wg.Wait()
+	})
+}
+
+func (b *recognizerBatcher) runWorker() {
+	defer b.wg.Done()
+
+	for {
+		first, ok := <-b.items
+		if !ok {
+			return
+		}
+
+		batch := []recognizeItem{first}
+		deadline := time.After(b.flushTimeout)
+		channelClosed := false
+
+	collect:
+		for len(batch) < b.batchSize {
+			select {
+			case item, ok := <-b.items:
+				if !ok {
+					channelClosed = true
+					break collect
+				}
+				batch = append(batch, item)
+			case <-deadline:
+				break collect
+			}
+		}
+
+		mats := make([]gocv.Mat, len(batch))
+		for i, item := range batch {
+			mats[i] = item.mat
+		}
+
+		rec := <-b.recPool
+		embeddings, err := rec.GetEmbeddings(mats)
+		b.recPool <- rec
+
+		if err != nil {
+			for _, item := range batch {
+				item.req.resolve(item.idx, nil, err)
+			}
+		} else {
+			for i, item := range batch {
+				if i >= len(embeddings) {
+					item.req.resolve(item.idx, nil, fmt.Errorf("recognizer returned %d embedding(s) for batch of %d", len(embeddings), len(batch)))
+					continue
+				}
+				item.req.resolve(item.idx, embeddings[i], nil)
+			}
+		}
+
+		if channelClosed {
+			return
+		}
+	}
 }
 
 func max(a, b int) int {
@@ -338,4 +472,10 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func shortPathHash(path string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(path))
+	return fmt.Sprintf("%016x", h.Sum64())[:10]
 }

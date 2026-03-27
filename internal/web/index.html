@@ -412,18 +412,19 @@ function renderOverview() {
   document.getElementById('detail').classList.remove('active');
 
   grid.innerHTML = report.persons.map(function(p, i) {
-    var thumbHtml = p.thumbnail
-      ? '<img class="thumb" src="/output/' + p.thumbnail + '" alt="Person ' + p.id + '">'
+    var previewPath = p.avatar_path || p.thumbnail;
+    var thumbHtml = previewPath
+      ? '<img class="thumb" src="/output/' + previewPath + '" alt="Person ' + p.id + '">'
       : '<div class="no-thumb">&#128100;</div>';
-    var descHtml = p.description
-      ? '<div class="desc">' + escapeHtml(p.description) + '</div>'
+    var scoreHtml = (p.quality_score && p.quality_score > 0)
+      ? '<div class="desc">quality: ' + Number(p.quality_score).toFixed(2) + '</div>'
       : '';
     return '<div class="person-card" data-idx="' + i + '">'
       + thumbHtml
       + '<div class="info">'
       + '<div class="name">Person ' + p.id + '</div>'
       + '<div class="count">' + p.photo_count + ' фото &middot; ' + p.face_count + ' лиц</div>'
-      + descHtml
+      + scoreHtml
       + '</div></div>';
   }).join('');
 
@@ -442,15 +443,20 @@ function showDetail(idx) {
   detail.classList.add('active');
 
   var avatar = document.getElementById('detail-avatar');
-  if (p.thumbnail) {
-    avatar.src = '/output/' + p.thumbnail;
+  var avatarPath = p.avatar_path || p.thumbnail;
+  if (avatarPath) {
+    avatar.src = '/output/' + avatarPath;
     avatar.style.display = 'block';
   } else {
     avatar.style.display = 'none';
   }
 
   document.getElementById('detail-title').textContent = 'Person ' + p.id + ' — ' + p.photo_count + ' фото';
-  document.getElementById('detail-desc').textContent = p.description || '';
+  if (p.quality_score && p.quality_score > 0) {
+    document.getElementById('detail-desc').textContent = 'Quality score: ' + Number(p.quality_score).toFixed(2);
+  } else {
+    document.getElementById('detail-desc').textContent = '';
+  }
 
   var photosDiv = document.getElementById('detail-photos');
   photosDiv.innerHTML = p.photos.map(function(photo) {
