@@ -140,6 +140,14 @@
     border-color: #e94560;
     color: #fff;
   }
+  .detail-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(233, 69, 96, 0.4);
+    flex-shrink: 0;
+  }
   .detail h2 {
     font-size: 1.4rem;
     font-weight: 600;
@@ -243,6 +251,7 @@
   <div id="detail" class="detail">
     <div class="detail-header">
       <button class="back-btn" id="back-btn">&larr; Назад</button>
+      <img class="detail-avatar" id="detail-avatar" src="" alt="">
       <h2 id="detail-title"></h2>
     </div>
     <p class="detail-desc" id="detail-desc"></p>
@@ -321,6 +330,14 @@ function showDetail(idx) {
 
   var detail = document.getElementById('detail');
   detail.classList.add('active');
+
+  var avatar = document.getElementById('detail-avatar');
+  if (p.thumbnail) {
+    avatar.src = '/output/' + p.thumbnail;
+    avatar.style.display = 'block';
+  } else {
+    avatar.style.display = 'none';
+  }
 
   document.getElementById('detail-title').textContent = 'Person ' + p.id + ' — ' + p.photo_count + ' фото';
   document.getElementById('detail-desc').textContent = p.description || '';
