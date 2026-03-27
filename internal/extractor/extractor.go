@@ -1,26 +1,28 @@
 package extractor
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"image"
 	"io"
-	"os/exec"
+	"os"
+	"path/filepath"
 	"sync"
 
+	"gocv.io/x/gocv"
+
+	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/models"
 )
 
 // Config holds extractor settings.
 type Config struct {
-	PythonBin  string
-	ScriptPath string
-	Workers    int
-	GPU        bool
-	ThumbDir   string
-	MaxDim     int
-	GPUWorkers int
+	ModelsDir string
+	Workers   int
+	GPU       bool
+	ThumbDir  string
+	MaxDim    int
+	DetThresh float32
+	NMSThresh float32
 }
 
 // Result aggregates extraction output and error statistics.
@@ -30,166 +32,64 @@ type Result struct {
 	FileErrors map[string]string
 }
 
-// Extract runs the Python face extractor on all files.
-// GPU mode uses a single persistent Python process (batch stdin/stdout streaming).
-// CPU mode uses a parallel worker pool.
+// Extract runs face detection and embedding extraction on all files using
+// native Go ONNX inference (no Python dependency).
 func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 	res := &Result{FileErrors: make(map[string]string)}
 
-	if cfg.GPU {
-		if err := extractBatch(files, cfg, w, res); err != nil {
-			return res, err
-		}
-	} else {
-		extractParallel(files, cfg, w, res)
+	detPath := filepath.Join(cfg.ModelsDir, "det_10g.onnx")
+	recPath := filepath.Join(cfg.ModelsDir, "w600k_r50.onnx")
+
+	if _, err := os.Stat(detPath); err != nil {
+		return nil, fmt.Errorf("detection model not found at %s: %w", detPath, err)
+	}
+	if _, err := os.Stat(recPath); err != nil {
+		return nil, fmt.Errorf("recognition model not found at %s: %w", recPath, err)
 	}
 
-	return res, nil
-}
-
-// extractBatch launches one or more Python batch processes.
-// Multiple processes allow overlapping CPU preprocessing with GPU inference.
-func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
-	nWorkers := cfg.GPUWorkers
-	if nWorkers <= 0 {
-		nWorkers = 1
-	}
-	if nWorkers > len(files) {
-		nWorkers = len(files)
-	}
-
-	args := []string{cfg.ScriptPath, "--batch"}
-	if cfg.GPU {
-		args = append(args, "--gpu")
-	}
-	if cfg.ThumbDir != "" {
-		args = append(args, "--thumb-dir", cfg.ThumbDir)
-	}
-	if cfg.MaxDim > 0 {
-		args = append(args, "--max-dim", fmt.Sprintf("%d", cfg.MaxDim))
-	}
-
-	chunks := make([][]string, nWorkers)
-	for i, f := range files {
-		chunks[i%nWorkers] = append(chunks[i%nWorkers], f)
-	}
-
-	var (
-		mu        sync.Mutex
-		processed int
-		total     = len(files)
-		errs      []error
-	)
-
-	var wg sync.WaitGroup
-	for wi := 0; wi < nWorkers; wi++ {
-		chunk := chunks[wi]
-		if len(chunk) == 0 {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := runBatchWorker(chunk, cfg.PythonBin, args, w, res, total, &mu, &processed); err != nil {
-				mu.Lock()
-				errs = append(errs, err)
-				mu.Unlock()
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
-}
-
-func runBatchWorker(files []string, pythonBin string, args []string, w io.Writer, res *Result, total int, mu *sync.Mutex, processed *int) error {
-	cmd := exec.Command(pythonBin, args...)
-	stdin, err := cmd.StdinPipe()
+	det, err := inference.NewDetector(inference.DetectorConfig{
+		ModelPath: detPath,
+		GPU:       cfg.GPU,
+		DetThresh: cfg.DetThresh,
+		NMSThresh: cfg.NMSThresh,
+	})
 	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
+		return nil, fmt.Errorf("init detector: %w", err)
 	}
-	stdout, err := cmd.StdoutPipe()
+	defer det.Close()
+
+	rec, err := inference.NewRecognizer(inference.RecognizerConfig{
+		ModelPath: recPath,
+		GPU:       cfg.GPU,
+	})
 	if err != nil {
-		return fmt.Errorf("stdout pipe: %w", err)
+		return nil, fmt.Errorf("init recognizer: %w", err)
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	defer rec.Close()
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start python: %w, stderr: %s", err, stderr.String())
-	}
+	recSize := rec.InputSize()
 
-	go func() {
-		defer stdin.Close()
-		for _, f := range files {
-			fmt.Fprintln(stdin, f)
-		}
-	}()
-
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 10*1024*1024), 10*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		var result models.ExtractionResult
-		if err := json.Unmarshal(line, &result); err != nil {
-			raw := string(line)
-			if len(raw) > 200 {
-				raw = raw[:200] + "..."
-			}
-			mu.Lock()
-			fmt.Fprintf(w, "WARN: skipping non-JSON output from python: %s\n", raw)
-			mu.Unlock()
-			continue
-		}
-
-		mu.Lock()
-		*processed++
-		p := *processed
-
-		if result.Error != "" {
-			fmt.Fprintf(w, "[%d/%d] ERROR %s: %s\n", p, total, result.File, result.Error)
-			res.FileErrors[result.File] = result.Error
-			res.ErrorCount++
-		} else {
-			for i := range result.Faces {
-				result.Faces[i].FilePath = result.File
-			}
-			res.Faces = append(res.Faces, result.Faces...)
-			fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", p, total, result.File, len(result.Faces))
-		}
-		mu.Unlock()
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("python process: %w, stderr: %s", err, stderr.String())
-	}
-
-	return nil
-}
-
-func extractParallel(files []string, cfg Config, w io.Writer, res *Result) {
 	type fileResult struct {
 		path  string
 		faces []models.Face
 		err   error
 	}
 
+	workers := cfg.Workers
+	if workers <= 0 {
+		workers = 1
+	}
+
 	jobs := make(chan string, len(files))
 	results := make(chan fileResult, len(files))
 
 	var wg sync.WaitGroup
-	for i := 0; i < cfg.Workers; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for path := range jobs {
-				faces, err := extractOne(path, cfg)
+				faces, err := processImage(path, det, rec, recSize, cfg)
 				results <- fileResult{path: path, faces: faces, err: err}
 			}
 		}()
@@ -218,38 +118,135 @@ func extractParallel(files []string, cfg Config, w io.Writer, res *Result) {
 		fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, r.path, len(r.faces))
 		res.Faces = append(res.Faces, r.faces...)
 	}
+
+	return res, nil
 }
 
-func extractOne(imagePath string, cfg Config) ([]models.Face, error) {
-	args := []string{cfg.ScriptPath, imagePath}
-	if cfg.ThumbDir != "" {
-		args = append(args, "--thumb-dir", cfg.ThumbDir)
+// processImage loads an image, detects faces, aligns them, extracts embeddings,
+// and optionally saves thumbnails.
+func processImage(
+	imagePath string,
+	det *inference.Detector,
+	rec *inference.Recognizer,
+	recSize int,
+	cfg Config,
+) ([]models.Face, error) {
+	img := gocv.IMRead(imagePath, gocv.IMReadColor)
+	if img.Empty() {
+		return nil, fmt.Errorf("cannot read image: %s", imagePath)
 	}
+	defer img.Close()
+
 	if cfg.MaxDim > 0 {
-		args = append(args, "--max-dim", fmt.Sprintf("%d", cfg.MaxDim))
+		h := img.Rows()
+		w := img.Cols()
+		maxSide := h
+		if w > maxSide {
+			maxSide = w
+		}
+		if maxSide > cfg.MaxDim {
+			scale := float64(cfg.MaxDim) / float64(maxSide)
+			newW := int(float64(w) * scale)
+			newH := int(float64(h) * scale)
+			resized := gocv.NewMat()
+			gocv.Resize(img, &resized, image.Point{X: newW, Y: newH}, 0, 0, gocv.InterpolationArea)
+			img.Close()
+			img = resized
+		}
 	}
 
-	cmd := exec.Command(cfg.PythonBin, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("python error: %w, stderr: %s", err, stderr.String())
+	dets, err := det.Detect(img)
+	if err != nil {
+		return nil, fmt.Errorf("detection: %w", err)
+	}
+	if len(dets) == 0 {
+		return nil, nil
 	}
 
-	var result models.ExtractionResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		return nil, fmt.Errorf("json decode error: %w, raw: %s", err, stdout.String())
+	aligned := make([]gocv.Mat, len(dets))
+	for i, d := range dets {
+		aligned[i] = inference.NormCrop(img, d.Kps, recSize)
+	}
+	defer func() {
+		for _, a := range aligned {
+			a.Close()
+		}
+	}()
+
+	embeddings, err := rec.GetEmbeddings(aligned)
+	if err != nil {
+		return nil, fmt.Errorf("recognition: %w", err)
 	}
 
-	if result.Error != "" {
-		return nil, fmt.Errorf("extraction error: %s", result.Error)
+	faces := make([]models.Face, len(dets))
+	for i, d := range dets {
+		thumb := ""
+		if cfg.ThumbDir != "" {
+			thumb = saveThumbnail(img, d, imagePath, i, cfg.ThumbDir)
+		}
+
+		faces[i] = models.Face{
+			BBox:      [4]float64{float64(d.X1), float64(d.Y1), float64(d.X2), float64(d.Y2)},
+			Embedding: embeddings[i],
+			DetScore:  float64(d.Score),
+			Thumbnail: thumb,
+			FilePath:  imagePath,
+		}
 	}
 
-	for i := range result.Faces {
-		result.Faces[i].FilePath = imagePath
+	return faces, nil
+}
+
+// saveThumbnail crops a face region with 25% padding, resizes to 160x160,
+// and saves as JPEG.
+func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, faceIdx int, thumbDir string) string {
+	h := img.Rows()
+	w := img.Cols()
+
+	x1 := int(det.X1)
+	y1 := int(det.Y1)
+	x2 := int(det.X2)
+	y2 := int(det.Y2)
+
+	padX := int(float64(x2-x1) * 0.25)
+	padY := int(float64(y2-y1) * 0.25)
+
+	cx1 := max(0, x1-padX)
+	cy1 := max(0, y1-padY)
+	cx2 := min(w, x2+padX)
+	cy2 := min(h, y2+padY)
+
+	if cx2 <= cx1 || cy2 <= cy1 {
+		return ""
 	}
 
-	return result.Faces, nil
+	crop := img.Region(image.Rect(cx1, cy1, cx2, cy2))
+	defer crop.Close()
+
+	resized := gocv.NewMat()
+	defer resized.Close()
+	gocv.Resize(crop, &resized, image.Point{X: 160, Y: 160}, 0, 0, gocv.InterpolationLinear)
+
+	base := filepath.Base(imagePath)
+	ext := filepath.Ext(base)
+	name := base[:len(base)-len(ext)]
+	thumbName := fmt.Sprintf("%s_face_%d.jpg", name, faceIdx)
+	thumbPath := filepath.Join(thumbDir, thumbName)
+
+	gocv.IMWriteWithParams(thumbPath, resized, []int{gocv.IMWriteJpegQuality, 90})
+	return thumbPath
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

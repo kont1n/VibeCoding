@@ -1,33 +1,35 @@
 # Face Grouping Service
 
-Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевой модели [InsightFace](https://github.com/deepinsight/insightface), извлекает face embeddings и кластеризует лица по косинусному сходству. Поддерживает GPU-ускорение с асинхронной предзагрузкой изображений, BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, описания через LM Studio (Moondream2) и веб-интерфейс для просмотра результатов.
+Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, описания через LM Studio (Moondream2) и веб-интерфейс для просмотра результатов.
 
 ## Как это работает
 
 ```mermaid
 flowchart LR
     A["dataset/\n(фотографии)"] --> B["Go CLI\n(main.go)"]
-    B -->|"batch stdin/stdout\nили worker pool"| C["Python\n(extract_faces.py)"]
-    C -->|"InsightFace\nbuffalo_l\nCPU / GPU"| D["Детекция лиц\n+ embeddings 512-dim\n(base64 float32)\n+ миниатюры"]
-    D -->|"JSONL → stdout"| B
-    B --> E["Кластеризация\n(Union-Find +\nBLAS matrix mul)"]
-    E --> F["Организация\nPerson_N/ + thumb.jpg"]
-    F --> G["report.json\n+ processing.log"]
-    G --> H["Web UI\n:8080"]
-    G -.->|"--describe"| I["LM Studio\nMoondream2"]
-    I -.-> G
+    B --> C["Детекция лиц\nSCRFD (det_10g.onnx)\nONNX Runtime"]
+    C --> D["Выравнивание\nSimilarity Transform\n+ WarpAffine"]
+    D --> E["Эмбеддинги 512-dim\nArcFace (w600k_r50.onnx)\nONNX Runtime"]
+    E --> F["Кластеризация\n(Union-Find +\nBLAS matrix mul)"]
+    F --> G["Организация\nPerson_N/ + thumb.jpg"]
+    G --> H["report.json\n+ processing.log"]
+    H --> I["Web UI\n:8080"]
+    H -.->|"--describe"| J["LM Studio\nMoondream2"]
+    J -.-> H
 ```
 
 ### Пайплайн
 
 1. **Сканирование** — Go обходит входную директорию и собирает все `.jpeg`, `.jpg`, `.png` файлы
-2. **Извлечение embeddings** — Python-скрипт с InsightFace (модель `buffalo_l`) детектирует лица и возвращает 512-мерные нормализованные embedding-векторы в формате base64 float32. Пайплайн декомпозирован: детекция (GPU) → выравнивание лиц (CPU, thread pool) → батч-распознавание (GPU, пачки по 32 лица). В GPU-режиме Go запускает несколько параллельных Python-процессов (по умолчанию 2), каждый с предзагрузкой изображений (8 потоков, очередь 16). Большие изображения автоматически уменьшаются до `--max-dim` пикселей перед обработкой. На CPU — параллельный worker pool
-3. **Генерация миниатюр** — для каждого обнаруженного лица вырезается crop с паддингом 25%, масштабируется до 160×160 и сохраняется в `.thumbnails/`. Запись миниатюр выполняется асинхронно в отдельном пуле потоков
-4. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
-5. **Организация** — для каждого кластера создается папка `Person_N/` с символическими ссылками на оригиналы и лучшей миниатюрой лица (`thumb.jpg`)
-6. **Описание (опционально)** — миниатюра отправляется в LM Studio (Moondream2) для генерации текстового описания внешности
-7. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`)
-8. **Веб-интерфейс (опционально)** — Go HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов в браузере
+2. **Детекция лиц** — SCRFD модель (`det_10g.onnx`) через ONNX Runtime Go биндинги: letterbox preprocessing (640x640), 3-уровневый FPN (strides 8/16/32), декодирование bbox + keypoints, NMS (IoU 0.4)
+3. **Выравнивание лиц** — similarity transform (Umeyama algorithm) по 5 ключевым точкам, WarpAffine до 112x112 через gocv/OpenCV
+4. **Извлечение embeddings** — ArcFace модель (`w600k_r50.onnx`): нормализация (mean=127.5, std=127.5), batch inference, L2-нормализация 512-мерных векторов
+5. **Генерация миниатюр** — для каждого обнаруженного лица вырезается crop с паддингом 25%, масштабируется до 160x160 и сохраняется как JPEG (quality 90)
+6. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
+7. **Организация** — для каждого кластера создается папка `Person_N/` с символическими ссылками на оригиналы и лучшей миниатюрой лица (`thumb.jpg`)
+8. **Описание (опционально)** — миниатюра отправляется в LM Studio (Moondream2) для генерации текстового описания внешности
+9. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`)
+10. **Веб-интерфейс (опционально)** — Go HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов в браузере
 
 > Если на фото несколько людей — оно появится в нескольких папках `Person_N/`.
 
@@ -36,7 +38,8 @@ flowchart LR
 | Компонент | Версия |
 |-----------|--------|
 | Go | 1.24+ |
-| Python | 3.10+ |
+| OpenCV | 4.12+ |
+| ONNX Runtime | 1.17+ |
 | ОС | Windows / Linux / macOS |
 | GPU (опционально) | NVIDIA с поддержкой CUDA |
 
@@ -44,35 +47,86 @@ flowchart LR
 
 ## Установка
 
-```bash
-# 1. Сборка Go-бинарника
-go build -o face-grouper.exe .
+### 1. ONNX Runtime
 
-# 2. Установка Python-зависимостей
-pip install -r scripts/requirements.txt
+Скачайте shared library с [github.com/microsoft/onnxruntime/releases](https://github.com/microsoft/onnxruntime/releases):
+
+- **Windows**: `onnxruntime.dll` (из пакета `onnxruntime-win-x64-*.zip`)
+- **Linux**: `libonnxruntime.so` (из `onnxruntime-linux-x64-*.tgz`)
+- **macOS**: `libonnxruntime.dylib` (из `onnxruntime-osx-*.tgz`)
+
+Для GPU-ускорения скачайте GPU-версию (`onnxruntime-win-x64-gpu-*.zip`).
+
+Поместите библиотеку в PATH или укажите путь через `--ort-lib`.
+
+### 2. OpenCV (для gocv)
+
+**Windows (MSYS2)**:
+```bash
+choco install mingw opencv
 ```
 
-> `requirements.txt` включает `onnxruntime-gpu`. Если GPU нет, замените на `onnxruntime` — скрипт автоматически упадёт на CPU.
+**Linux (Ubuntu/Debian)**:
+```bash
+sudo apt install libopencv-dev
+```
 
-При первом запуске InsightFace автоматически скачает модель `buffalo_l` (~300 MB) в `~/.insightface/models/`.
+**macOS (Homebrew)**:
+```bash
+brew install opencv
+```
+
+### 3. ONNX-модели InsightFace
+
+Скачайте модели из [InsightFace model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo) (пакет `buffalo_l`):
+
+- `det_10g.onnx` (~17 MB) — SCRFD детектор лиц
+- `w600k_r50.onnx` (~174 MB) — ArcFace распознавание лиц
+
+Поместите оба файла в каталог `./models/` (или укажите путь через `--models-dir`).
+
+### 4. Сборка
+
+**Windows (рекомендуется):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
+```
+
+Дополнительно:
+- `-Msys2Bin "C:\msys64\ucrt64\bin"` — путь к MSYS2 toolchain (если не указан, авто-поиск: `ucrt64` -> `mingw64` -> `clang64`)
+- `-Output "face-grouper.exe"` — имя выходного файла
+- `-SkipClean` — не выполнять `go clean -cache`
+
+**Ручная сборка:**
+```bash
+# Linux / macOS
+CGO_ENABLED=1 go build -o face-grouper .
+
+# Windows (MSYS2)
+CGO_ENABLED=1 CC=gcc CXX=g++ \
+  CGO_CFLAGS="$(pkg-config --cflags opencv4)" \
+  CGO_CXXFLAGS="$(pkg-config --cflags opencv4)" \
+  CGO_LDFLAGS="$(pkg-config --libs opencv4)" \
+  go build -tags customenv -o face-grouper.exe .
+```
 
 ## Запуск
 
 ```bash
 # Базовый запуск на CPU
-./face-grouper.exe
+./face-grouper --input ./photos
 
 # GPU + веб-интерфейс
-./face-grouper.exe --gpu --serve
+./face-grouper --gpu --serve
 
 # GPU + описания через Moondream2 + веб
-./face-grouper.exe --gpu --describe --serve
+./face-grouper --gpu --describe --serve
 
 # Все параметры
-./face-grouper.exe --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --gpu-workers 3 --max-dim 2560 --serve --port 3000
+./face-grouper --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --max-dim 2560 --serve --port 3000
 
 # Просмотр предыдущих результатов без повторной обработки
-./face-grouper.exe --view --output ./output
+./face-grouper --view --output ./output
 ```
 
 ### Параметры CLI
@@ -81,11 +135,12 @@ pip install -r scripts/requirements.txt
 |------|-------------|----------|
 | `--input` | `./dataset` | Директория с исходными фотографиями |
 | `--output` | `./output` | Директория для результатов группировки |
-| `--workers` | `4` | Количество параллельных воркеров (CPU-режим) |
+| `--models-dir` | `./models` | Директория с ONNX-моделями (det_10g.onnx, w600k_r50.onnx) |
+| `--ort-lib` | *авто* | Путь к ONNX Runtime shared library |
+| `--workers` | `4` | Количество параллельных воркеров |
 | `--threshold` | `0.5` | Порог косинусного сходства для объединения лиц (0.0–1.0) |
-| `--python` | `python` | Путь к Python-интерпретатору |
-| `--gpu` | `false` | Использовать CUDA GPU для InsightFace |
-| `--gpu-workers` | `2` | Количество параллельных GPU batch-процессов |
+| `--det-thresh` | `0.5` | Порог уверенности детекции лиц |
+| `--gpu` | `false` | Использовать CUDA GPU для ONNX Runtime |
 | `--max-dim` | `1920` | Уменьшать изображения до N px по длинной стороне (0 = без ресайза) |
 | `--serve` | `false` | Запустить веб-интерфейс после обработки |
 | `--port` | `8080` | Порт веб-сервера |
@@ -100,7 +155,7 @@ pip install -r scripts/requirements.txt
 Found 685 image(s)
 
 === Extracting face embeddings ===
-Mode: GPU (CUDA), 2 batch process(es)
+Mode: CPU, 4 worker(s)
 Pre-resize: max 1920px
 [1/685] C:\photos\TCF_001.jpeg — found 2 face(s)
 [2/685] C:\photos\TCF_002.jpeg — found 1 face(s)
@@ -170,13 +225,22 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 ├── main.go                            # Точка входа, CLI-флаги, оркестрация пайплайна
 ├── go.mod
 ├── config.json                        # Конфигурация LM Studio / Moondream2
+├── models/                            # ONNX-модели InsightFace
+│   ├── det_10g.onnx                   # SCRFD детектор лиц
+│   └── w600k_r50.onnx                 # ArcFace распознавание лиц
 ├── internal/
 │   ├── models/
-│   │   └── models.go                  # Типы данных: Face, ExtractionResult, Cluster
+│   │   └── models.go                  # Типы данных: Face, Cluster
 │   ├── scanner/
 │   │   └── scanner.go                 # Рекурсивное сканирование директории
+│   ├── inference/
+│   │   ├── ort.go                     # Инициализация ONNX Runtime
+│   │   ├── detector.go                # SCRFD детекция лиц
+│   │   ├── recognizer.go             # ArcFace эмбеддинги
+│   │   ├── align.go                   # Similarity transform + WarpAffine
+│   │   └── nms.go                     # Non-Maximum Suppression
 │   ├── extractor/
-│   │   └── extractor.go               # Batch (GPU) / Worker pool (CPU), парсинг JSON
+│   │   └── extractor.go               # Worker pool, оркестрация inference pipeline
 │   ├── clustering/
 │   │   └── clustering.go              # Union-Find + cosine similarity кластеризация
 │   ├── organizer/
@@ -188,9 +252,6 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 │   └── web/
 │       ├── web.go                     # HTTP-сервер
 │       └── index.html                 # Встроенный веб-интерфейс (go:embed)
-├── scripts/
-│   ├── extract_faces.py               # Python: InsightFace детекция + embeddings + миниатюры
-│   └── requirements.txt               # Python-зависимости
 ├── dataset/                           # Исходные фотографии для обработки
 └── output/                            # Результаты
     ├── processing.log                 # Лог обработки
@@ -206,75 +267,44 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 
 ## Модули
 
+### `internal/inference` — нативный inference
+
+ONNX Runtime Go-биндинги для прямого запуска моделей InsightFace:
+
+- **`ort.go`** — инициализация/финализация ONNX Runtime, загрузка shared library, создание сессий с CPU/CUDA провайдерами
+- **`detector.go`** — SCRFD детектор: letterbox resize, нормализация (mean=127.5, std=128.0), NCHW конвертация, декодирование anchor-based выходов по 3 уровням FPN, фильтрация по порогу
+- **`recognizer.go`** — ArcFace: нормализация (mean=127.5, std=127.5), batch inference, L2-нормализация 512-мерных эмбеддингов
+- **`align.go`** — Umeyama similarity transform по 5 facial landmarks, WarpAffine через gocv для выравнивания лица до 112x112
+- **`nms.go`** — greedy Non-Maximum Suppression с IoU threshold
+
+### `internal/extractor` — оркестрация extraction pipeline
+
+Worker pool из горутин, каждый worker: загрузка изображения (gocv) → опциональный downscale (--max-dim) → SCRFD детекция → alignment по keypoints → ArcFace embedding → сохранение thumbnail (crop + resize 160x160, JPEG q90).
+
 ### `internal/models` — типы данных
 
-- **`Face`** — обнаруженное лицо: bounding box `[x1, y1, x2, y2]`, 512-мерный embedding (поддержка base64 float32 и JSON-массива), уверенность детекции, путь к миниатюре, путь к исходному файлу. Кастомный `UnmarshalJSON` для обратной совместимости обоих форматов
-- **`ExtractionResult`** — JSON-ответ от Python-скрипта: список лиц + опциональная ошибка + путь к файлу (batch-режим)
+- **`Face`** — обнаруженное лицо: bounding box `[x1, y1, x2, y2]`, 512-мерный embedding, уверенность детекции, путь к миниатюре, путь к исходному файлу
 - **`Cluster`** — группа лиц одного человека
-
-### `internal/scanner` — сканирование
-
-Рекурсивно обходит директорию через `filepath.Walk`, фильтрует по расширениям (`.jpeg`, `.jpg`, `.png`), возвращает абсолютные пути.
-
-### `internal/extractor` — извлечение embeddings
-
-Два режима работы:
-- **GPU (batch)** — запускается `--gpu-workers` параллельных Python-процессов (по умолчанию 2), файлы распределяются round-robin. Каждый процесс получает пути через stdin и возвращает JSONL через stdout. Пока один процесс занят CPU-препроцессингом, другой использует GPU — это повышает утилизацию видеокарты. Прогресс синхронизируется через mutex
-- **CPU (parallel)** — worker pool с настраиваемым числом горутин, каждый вызывает Python-скрипт отдельно
 
 ### `internal/clustering` — кластеризация
 
-Строит матрицу L2-нормализованных embeddings и вычисляет косинусное сходство через блочное матричное перемножение (gonum BLAS `dgemm`). Блоки размером 512×512 обеспечивают эффективное использование CPU-кэша. Пары с сходством >= порога объединяются через Union-Find (disjoint set с path compression и union by rank).
+Строит матрицу L2-нормализованных embeddings и вычисляет косинусное сходство через блочное матричное перемножение (gonum BLAS `dgemm`). Блоки размером 512x512 обеспечивают эффективное использование CPU-кэша. Пары с сходством >= порога объединяются через Union-Find.
 
 ### `internal/organizer` — организация результатов
 
-Создает директории `output/Person_N/`, сортирует кластеры по размеру (Person_1 — самая большая группа). Создает символические ссылки на оригиналы. Выбирает лучшую миниатюру лица (максимальный `det_score`) и копирует как `thumb.jpg`. Дедуплицирует по пути файла.
+Создает директории `output/Person_N/`, сортирует кластеры по размеру. Создает символические ссылки на оригиналы. Выбирает лучшую миниатюру лица (максимальный `det_score`) и копирует как `thumb.jpg`.
 
 ### `internal/report` — отчёт
 
-Структурированный JSON-отчёт с метриками обработки: количество изображений, лиц, персон, ошибок, время, пороги. Включает детализацию ошибок по файлам (`file_errors`). Для каждой персоны — количество фото, миниатюра, описание, список путей к фото.
+Структурированный JSON-отчёт с метриками обработки.
 
 ### `internal/describer` — описание внешности
 
-Клиент OpenAI-совместимого Vision API. Отправляет миниатюру лица в LM Studio (Moondream2) и получает текстовое описание внешности: пол, возраст, цвет волос, отличительные черты.
+Клиент OpenAI-совместимого Vision API. Отправляет миниатюру лица в LM Studio (Moondream2) и получает текстовое описание внешности.
 
 ### `internal/web` — веб-интерфейс
 
-Встроенный HTTP-сервер (Go `net/http` + `embed`) с graceful shutdown по SIGINT/SIGTERM. Отдает HTML-страницу с JavaScript, который загружает `report.json` через API и рендерит интерфейс: карточки персон с превью лица в detail view, кликабельный счётчик ошибок с модальным окном детализации, сетку фотографий, полноэкранный просмотр.
-
-### `scripts/extract_faces.py` — Python-скрипт
-
-Использует `insightface.app.FaceAnalysis` с моделью `buffalo_l` (SCRFD детектор + ArcFace эмбеддер). Поддерживает два режима:
-
-- **Single** — `python extract_faces.py image.jpg [--gpu] [--thumb-dir DIR] [--max-dim N]`
-- **Batch** — `python extract_faces.py --batch [--gpu] [--thumb-dir DIR] [--max-dim N]` — читает пути из stdin, отдает JSONL
-
-Оптимизации производительности:
-- **Pre-resize** — большие изображения уменьшаются до `--max-dim` пикселей по длинной стороне при загрузке (в пуле потоков), сокращая CPU-нагрузку на внутренний ресайз InsightFace
-- **Декомпозиция пайплайна** — `app.get()` заменён на раздельные вызовы: детекция (`det_model.detect`, GPU) → выравнивание лиц (`norm_crop`, CPU thread pool) → батч-распознавание (`rec_model.get_feat`, GPU). Ненужные модели (genderage, landmark) не вызываются
-- **Батч recognition** — выровненные лица накапливаются и отправляются в ArcFace пачками по 32 (один GPU-вызов вместо 32 отдельных)
-- **Асинхронная предзагрузка** — `ThreadPoolExecutor` (8 потоков) читает и ресайзит следующие изображения с диска, пока GPU обрабатывает текущее (глубина очереди 16)
-- **Параллельное выравнивание** — отдельный пул потоков для `norm_crop` (affine warp, releases GIL)
-- **Параллельное сохранение миниатюр** — отдельный пул потоков для I/O-операций записи crop-файлов
-- **Base64 embedding** — вместо JSON-массива из 512 чисел (~8 КБ) передаётся base64-encoded float32 (~2.7 КБ), трафик через pipe сокращён в 3 раза
-- **Диагностика провайдеров** — при инициализации в stderr выводятся реально используемые ONNX-провайдеры (позволяет убедиться, что CUDA активен)
-- **Перенаправление stdout** — диагностический вывод ONNX Runtime при инициализации перенаправляется в stderr, чтобы не засорять JSONL-поток
-
-Формат вывода:
-
-```json
-{
-  "file": "path/to/image.jpg",
-  "faces": [
-    {
-      "bbox": [102.5, 45.2, 287.1, 310.8],
-      "embedding": "base64-encoded float32 (512 dims)",
-      "det_score": 0.95,
-      "thumbnail": ".thumbnails/image_face_0.jpg"
-    }
-  ]
-}
-```
+Встроенный HTTP-сервер (Go `net/http` + `embed`) с graceful shutdown.
 
 ## Настройка порога
 
@@ -290,20 +320,11 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 
 ## Зависимости
 
-### Go
-
 | Пакет | Назначение |
 |-------|-----------|
+| `github.com/yalue/onnxruntime_go` | Go-биндинги для ONNX Runtime (CPU/CUDA inference) |
+| `gocv.io/x/gocv` | Go-биндинги для OpenCV 4 (чтение изображений, resize, WarpAffine) |
 | `gonum.org/v1/gonum` | BLAS-ускоренное матричное перемножение для кластеризации embeddings |
-
-### Python
-
-| Пакет | Назначение |
-|-------|-----------|
-| `insightface` | Детекция лиц и извлечение face embeddings (модель buffalo_l) |
-| `onnxruntime-gpu` | Инференс ONNX-моделей на GPU (CUDA). Для CPU-only: `onnxruntime` |
-| `numpy` | Работа с массивами embeddings |
-| `opencv-python-headless` | Чтение изображений, генерация миниатюр |
 
 ## Лицензия
 

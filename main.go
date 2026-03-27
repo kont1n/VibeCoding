@@ -13,6 +13,7 @@ import (
 	"github.com/kont1n/face-grouper/internal/clustering"
 	"github.com/kont1n/face-grouper/internal/describer"
 	"github.com/kont1n/face-grouper/internal/extractor"
+	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/organizer"
 	"github.com/kont1n/face-grouper/internal/report"
 	"github.com/kont1n/face-grouper/internal/scanner"
@@ -28,18 +29,18 @@ func main() {
 	outputDir := flag.String("output", "./output", "path for grouped output")
 	workers := flag.Int("workers", 4, "number of parallel extraction workers")
 	threshold := flag.Float64("threshold", 0.5, "cosine similarity threshold for face grouping")
-	pythonBin := flag.String("python", "python", "path to Python interpreter")
-	gpu := flag.Bool("gpu", false, "use GPU (CUDA) for InsightFace")
-	gpuWorkers := flag.Int("gpu-workers", 2, "number of parallel GPU batch processes")
+	gpu := flag.Bool("gpu", false, "use GPU (CUDA) for ONNX Runtime inference")
 	maxDim := flag.Int("max-dim", 1920, "downscale images so longest side <= this value (0 = no resize)")
 	serve := flag.Bool("serve", false, "start web UI after processing")
 	port := flag.Int("port", 8080, "web UI port")
 	describe := flag.Bool("describe", false, "generate person descriptions via LM Studio (Moondream2)")
 	configPath := flag.String("config", "config.json", "path to config file")
 	viewOnly := flag.Bool("view", false, "only start web UI without processing (requires previous output)")
+	modelsDir := flag.String("models-dir", "./models", "path to directory with ONNX models (det_10g.onnx, w600k_r50.onnx)")
+	ortLib := flag.String("ort-lib", "", "path to ONNX Runtime shared library (auto-detected if empty)")
+	detThresh := flag.Float64("det-thresh", 0.5, "face detection confidence threshold")
 	flag.Parse()
 
-	// View-only mode: skip processing, just serve existing results
 	if *viewOnly {
 		fmt.Printf("Starting web UI for %s\n", *outputDir)
 		if err := web.Serve(*outputDir, *port); err != nil {
@@ -48,13 +49,10 @@ func main() {
 		return
 	}
 
-	scriptPath, err := filepath.Abs(filepath.Join("scripts", "extract_faces.py"))
-	if err != nil {
-		log.Fatalf("cannot resolve script path: %v", err)
+	if err := inference.InitORT(*ortLib); err != nil {
+		log.Fatalf("ONNX Runtime init error: %v", err)
 	}
-	if _, err := os.Stat(scriptPath); err != nil {
-		log.Fatalf("Python script not found at %s: %v", scriptPath, err)
-	}
+	defer inference.DestroyORT()
 
 	os.MkdirAll(*outputDir, 0o755)
 
@@ -88,7 +86,7 @@ func main() {
 	// --- Extract ---
 	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
 	if *gpu {
-		fmt.Fprintf(w, "Mode: GPU (CUDA), %d batch process(es)\n", *gpuWorkers)
+		fmt.Fprintf(w, "Mode: GPU (CUDA)\n")
 	} else {
 		fmt.Fprintf(w, "Mode: CPU, %d worker(s)\n", *workers)
 	}
@@ -97,13 +95,12 @@ func main() {
 	}
 
 	extractCfg := extractor.Config{
-		PythonBin:  *pythonBin,
-		ScriptPath: scriptPath,
-		Workers:    *workers,
-		GPU:        *gpu,
-		ThumbDir:   thumbDir,
-		MaxDim:     *maxDim,
-		GPUWorkers: *gpuWorkers,
+		ModelsDir: *modelsDir,
+		Workers:   *workers,
+		GPU:       *gpu,
+		ThumbDir:  thumbDir,
+		MaxDim:    *maxDim,
+		DetThresh: float32(*detThresh),
 	}
 	extractResult, err := extractor.Extract(files, extractCfg, w)
 	if err != nil {

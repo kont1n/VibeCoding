@@ -2,5 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 *.onnx
+models/
 dataset/
 output/
+*.exe
+*.dll
+*.so
+*.dylib
