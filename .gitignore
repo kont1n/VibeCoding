@@ -5,6 +5,7 @@ __pycache__/
 models/
 dataset/
 output/
+runtime/
 *.exe
 *.dll
 *.so

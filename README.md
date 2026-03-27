@@ -39,7 +39,7 @@ flowchart LR
 |-----------|--------|
 | Go | 1.24+ |
 | OpenCV | 4.12+ |
-| ONNX Runtime | 1.17+ |
+| ONNX Runtime | 1.24+ |
 | ОС | Windows / Linux / macOS |
 | GPU (опционально) | NVIDIA с поддержкой CUDA |
 
@@ -65,7 +65,7 @@ flowchart LR
 ```powershell
 winget install MSYS2.MSYS2
 C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
-C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-opencv mingw-w64-ucrt-x86_64-pkgconf"
+C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-opencv mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-qt6-base"
 ```
 
 > Важно: не используйте OpenCV из Chocolatey для сборки с `gocv` — обычно это MSVC-сборка и она конфликтует с MinGW/CGO toolchain.
@@ -114,7 +114,40 @@ CGO_ENABLED=1 CC=gcc CXX=g++ \
   go build -tags customenv -o face-grouper.exe .
 ```
 
+### 5. GPU-запуск на Windows (авто-подготовка)
+
+Скрипт `scripts/run-gpu.ps1` автоматически:
+- выбирает рабочий MSYS2 runtime для OpenCV;
+- ставит Qt runtime пакет (`qt6-base`), если его не хватает;
+- скачивает актуальный ONNX Runtime GPU в `./runtime/`;
+- при необходимости доустанавливает актуальные CUDA/cuDNN DLL через `pip`;
+- запускает `face-grouper.exe` с `--gpu`, `--ort-lib` и корректным `--models-dir`.
+
+Полезные параметры скрипта: `-InputDir`, `-OutputDir`, `-ModelsDir`, `-OrtVersion`, `-Msys2Bin`, `-SkipNvidiaRuntimeInstall`, `-Serve`, `-Describe`.
+
+```powershell
+# Базовый GPU запуск
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1
+
+# GPU + веб-интерфейс
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Serve
+
+# GPU + описания + веб
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Describe -Serve
+
+# Кастомные вход/выход
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -InputDir .\photos -OutputDir .\results
+```
+
 ## Запуск
+
+### Windows GPU (рекомендуется)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Serve
+```
+
+### Прямой запуск CLI
 
 ```bash
 # Базовый запуск на CPU
@@ -259,7 +292,8 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 ├── go.mod
 ├── config.json                        # Конфигурация LM Studio / Moondream2
 ├── scripts/
-│   └── build.ps1                      # Сборка под Windows/MSYS2 (CGO/OpenCV)
+│   ├── build.ps1                      # Сборка под Windows/MSYS2 (CGO/OpenCV)
+│   └── run-gpu.ps1                    # Автоподготовка зависимостей и запуск GPU
 ├── models/                            # ONNX-модели InsightFace
 │   ├── det_10g.onnx                   # SCRFD детектор лиц
 │   └── w600k_r50.onnx                 # ArcFace распознавание лиц
