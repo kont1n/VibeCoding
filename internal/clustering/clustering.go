@@ -2,11 +2,12 @@ package clustering
 
 import (
 	"math"
+	"sync"
 
 	"github.com/kont1n/face-grouper/internal/models"
+	"gonum.org/v1/gonum/mat"
 )
 
-// unionFind implements a disjoint-set data structure with path compression and union by rank.
 type unionFind struct {
 	parent []int
 	rank   []int
@@ -24,10 +25,11 @@ func newUnionFind(n int) *unionFind {
 }
 
 func (uf *unionFind) find(x int) int {
-	if uf.parent[x] != x {
-		uf.parent[x] = uf.find(uf.parent[x])
+	for uf.parent[x] != x {
+		uf.parent[x] = uf.parent[uf.parent[x]]
+		x = uf.parent[x]
 	}
-	return uf.parent[x]
+	return x
 }
 
 func (uf *unionFind) union(x, y int) {
@@ -44,43 +46,94 @@ func (uf *unionFind) union(x, y int) {
 	}
 }
 
-// cosineSimilarity computes cosine similarity between two vectors.
-// Both vectors are expected to be L2-normalized by InsightFace, so this simplifies to dot product.
-func cosineSimilarity(a, b []float64) float64 {
-	if len(a) != len(b) {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
-	}
-	denom := math.Sqrt(normA) * math.Sqrt(normB)
-	if denom == 0 {
-		return 0
-	}
-	return dot / denom
-}
+type intPair struct{ i, j int }
 
-// Cluster groups faces by person using cosine similarity of embeddings.
-// Faces with similarity >= threshold are considered the same person.
+const blockSize = 512
+
+// Cluster groups faces using BLAS-accelerated matrix multiplication for similarity.
+// Embeddings are L2-normalized by InsightFace, so dot product = cosine similarity.
 func Cluster(faces []models.Face, threshold float64) []models.Cluster {
 	n := len(faces)
 	if n == 0 {
 		return nil
 	}
 
-	uf := newUnionFind(n)
+	dim := len(faces[0].Embedding)
+	if dim == 0 {
+		return nil
+	}
 
-	for i := 0; i < n; i++ {
-		for j := i + 1; j < n; j++ {
-			sim := cosineSimilarity(faces[i].Embedding, faces[j].Embedding)
-			if sim >= threshold {
-				uf.union(i, j)
-			}
+	embData := make([]float64, n*dim)
+	for i, f := range faces {
+		norm := 0.0
+		for _, v := range f.Embedding {
+			norm += v * v
+		}
+		norm = math.Sqrt(norm)
+		if norm == 0 {
+			norm = 1
+		}
+		for j, v := range f.Embedding {
+			embData[i*dim+j] = v / norm
 		}
 	}
+
+	E := mat.NewDense(n, dim, embData)
+	uf := newUnionFind(n)
+
+	pairs := make(chan intPair, 4096)
+
+	var scanWg sync.WaitGroup
+	scanWg.Add(1)
+	go func() {
+		defer scanWg.Done()
+		defer close(pairs)
+
+		for iStart := 0; iStart < n; iStart += blockSize {
+			iEnd := iStart + blockSize
+			if iEnd > n {
+				iEnd = n
+			}
+			rows := iEnd - iStart
+			blockI := E.Slice(iStart, iEnd, 0, dim).(*mat.Dense)
+
+			for jStart := iStart; jStart < n; jStart += blockSize {
+				jEnd := jStart + blockSize
+				if jEnd > n {
+					jEnd = n
+				}
+				cols := jEnd - jStart
+				blockJ := E.Slice(jStart, jEnd, 0, dim).(*mat.Dense)
+
+				sim := mat.NewDense(rows, cols, nil)
+				sim.Mul(blockI, blockJ.T())
+
+				simData := sim.RawMatrix()
+				for li := 0; li < rows; li++ {
+					gi := iStart + li
+					rowOff := li * simData.Stride
+					jBegin := 0
+					if iStart == jStart {
+						jBegin = li + 1
+					}
+					for lj := jBegin; lj < cols; lj++ {
+						gj := jStart + lj
+						if gi >= gj {
+							continue
+						}
+						if simData.Data[rowOff+lj] >= threshold {
+							pairs <- intPair{gi, gj}
+						}
+					}
+				}
+			}
+		}
+	}()
+
+	for p := range pairs {
+		uf.union(p.i, p.j)
+	}
+	scanWg.Wait()
 
 	groups := make(map[int][]int)
 	for i := 0; i < n; i++ {
@@ -91,9 +144,9 @@ func Cluster(faces []models.Face, threshold float64) []models.Cluster {
 	clusters := make([]models.Cluster, 0, len(groups))
 	id := 1
 	for _, indices := range groups {
-		var clusterFaces []models.Face
-		for _, idx := range indices {
-			clusterFaces = append(clusterFaces, faces[idx])
+		clusterFaces := make([]models.Face, len(indices))
+		for k, idx := range indices {
+			clusterFaces[k] = faces[idx]
 		}
 		clusters = append(clusters, models.Cluster{
 			ID:    id,

@@ -85,13 +85,19 @@ func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
 	processed := 0
 	total := len(files)
 	for scanner.Scan() {
-		processed++
+		line := scanner.Bytes()
+
 		var result models.ExtractionResult
-		if err := json.Unmarshal(scanner.Bytes(), &result); err != nil {
-			fmt.Fprintf(w, "[%d/%d] ERROR json decode: %v\n", processed, total, err)
-			res.ErrorCount++
+		if err := json.Unmarshal(line, &result); err != nil {
+			raw := string(line)
+			if len(raw) > 200 {
+				raw = raw[:200] + "..."
+			}
+			fmt.Fprintf(w, "WARN: skipping non-JSON output from python: %s\n", raw)
 			continue
 		}
+
+		processed++
 
 		if result.Error != "" {
 			fmt.Fprintf(w, "[%d/%d] ERROR %s: %s\n", processed, total, result.File, result.Error)

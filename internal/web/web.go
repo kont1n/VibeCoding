@@ -1,18 +1,22 @@
 package web
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 )
 
 //go:embed index.html
 var indexHTML []byte
 
-// Serve starts an HTTP server exposing the report and photos from outputDir.
+// Serve starts an HTTP server with graceful shutdown on SIGINT/SIGTERM.
 func Serve(outputDir string, port int) error {
 	mux := http.NewServeMux()
 
@@ -40,6 +44,38 @@ func Serve(outputDir string, port int) error {
 	mux.Handle("/output/", http.StripPrefix("/output/", fs))
 
 	addr := fmt.Sprintf(":%d", port)
-	log.Printf("Web UI: http://localhost%s", addr)
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("Web UI: http://localhost%s", addr)
+		log.Printf("Press Ctrl+C to stop")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-quit:
+		log.Printf("Received %v, shutting down...", sig)
+	case err := <-errCh:
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server shutdown: %w", err)
+	}
+
+	log.Printf("Server stopped")
+	return nil
 }
