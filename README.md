@@ -21,7 +21,7 @@ flowchart LR
 ### Пайплайн
 
 1. **Сканирование** — Go обходит входную директорию и собирает все `.jpeg`, `.jpg`, `.png` файлы
-2. **Извлечение embeddings** — Python-скрипт с InsightFace (модель `buffalo_l`) детектирует лица и возвращает 512-мерные нормализованные embedding-векторы в формате base64 float32. В GPU-режиме запускается один процесс с потоковым вводом/выводом (batch) и асинхронной предзагрузкой изображений (4 потока, глубина очереди 8), на CPU — параллельный worker pool
+2. **Извлечение embeddings** — Python-скрипт с InsightFace (модель `buffalo_l`) детектирует лица и возвращает 512-мерные нормализованные embedding-векторы в формате base64 float32. Пайплайн декомпозирован: детекция (GPU) → выравнивание лиц (CPU, thread pool) → батч-распознавание (GPU, пачки по 32 лица). В GPU-режиме Go запускает несколько параллельных Python-процессов (по умолчанию 2), каждый с предзагрузкой изображений (8 потоков, очередь 16). Большие изображения автоматически уменьшаются до `--max-dim` пикселей перед обработкой. На CPU — параллельный worker pool
 3. **Генерация миниатюр** — для каждого обнаруженного лица вырезается crop с паддингом 25%, масштабируется до 160×160 и сохраняется в `.thumbnails/`. Запись миниатюр выполняется асинхронно в отдельном пуле потоков
 4. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
 5. **Организация** — для каждого кластера создается папка `Person_N/` с символическими ссылками на оригиналы и лучшей миниатюрой лица (`thumb.jpg`)
@@ -69,7 +69,7 @@ pip install -r scripts/requirements.txt
 ./face-grouper.exe --gpu --describe --serve
 
 # Все параметры
-./face-grouper.exe --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --serve --port 3000
+./face-grouper.exe --input ./photos --output ./results --workers 8 --threshold 0.6 --gpu --gpu-workers 3 --max-dim 2560 --serve --port 3000
 
 # Просмотр предыдущих результатов без повторной обработки
 ./face-grouper.exe --view --output ./output
@@ -85,6 +85,8 @@ pip install -r scripts/requirements.txt
 | `--threshold` | `0.5` | Порог косинусного сходства для объединения лиц (0.0–1.0) |
 | `--python` | `python` | Путь к Python-интерпретатору |
 | `--gpu` | `false` | Использовать CUDA GPU для InsightFace |
+| `--gpu-workers` | `2` | Количество параллельных GPU batch-процессов |
+| `--max-dim` | `1920` | Уменьшать изображения до N px по длинной стороне (0 = без ресайза) |
 | `--serve` | `false` | Запустить веб-интерфейс после обработки |
 | `--port` | `8080` | Порт веб-сервера |
 | `--describe` | `false` | Генерировать описания через LM Studio (Moondream2) |
@@ -98,7 +100,8 @@ pip install -r scripts/requirements.txt
 Found 685 image(s)
 
 === Extracting face embeddings ===
-Mode: GPU (CUDA), batch streaming
+Mode: GPU (CUDA), 2 batch process(es)
+Pre-resize: max 1920px
 [1/685] C:\photos\TCF_001.jpeg — found 2 face(s)
 [2/685] C:\photos\TCF_002.jpeg — found 1 face(s)
 ...
@@ -216,7 +219,7 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 ### `internal/extractor` — извлечение embeddings
 
 Два режима работы:
-- **GPU (batch)** — один Python-процесс, пути передаются через stdin, результаты читаются из stdout (JSONL). Модель загружается однократно. Non-JSON вывод (инициализация ONNX Runtime) игнорируется с предупреждением
+- **GPU (batch)** — запускается `--gpu-workers` параллельных Python-процессов (по умолчанию 2), файлы распределяются round-robin. Каждый процесс получает пути через stdin и возвращает JSONL через stdout. Пока один процесс занят CPU-препроцессингом, другой использует GPU — это повышает утилизацию видеокарты. Прогресс синхронизируется через mutex
 - **CPU (parallel)** — worker pool с настраиваемым числом горутин, каждый вызывает Python-скрипт отдельно
 
 ### `internal/clustering` — кластеризация
@@ -243,13 +246,18 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 
 Использует `insightface.app.FaceAnalysis` с моделью `buffalo_l` (SCRFD детектор + ArcFace эмбеддер). Поддерживает два режима:
 
-- **Single** — `python extract_faces.py image.jpg [--gpu] [--thumb-dir DIR]`
-- **Batch** — `python extract_faces.py --batch [--gpu] [--thumb-dir DIR]` — читает пути из stdin, отдает JSONL
+- **Single** — `python extract_faces.py image.jpg [--gpu] [--thumb-dir DIR] [--max-dim N]`
+- **Batch** — `python extract_faces.py --batch [--gpu] [--thumb-dir DIR] [--max-dim N]` — читает пути из stdin, отдает JSONL
 
 Оптимизации производительности:
-- **Асинхронная предзагрузка** — `ThreadPoolExecutor` (4 потока) читает следующие изображения с диска, пока GPU обрабатывает текущее (глубина очереди 8)
+- **Pre-resize** — большие изображения уменьшаются до `--max-dim` пикселей по длинной стороне при загрузке (в пуле потоков), сокращая CPU-нагрузку на внутренний ресайз InsightFace
+- **Декомпозиция пайплайна** — `app.get()` заменён на раздельные вызовы: детекция (`det_model.detect`, GPU) → выравнивание лиц (`norm_crop`, CPU thread pool) → батч-распознавание (`rec_model.get_feat`, GPU). Ненужные модели (genderage, landmark) не вызываются
+- **Батч recognition** — выровненные лица накапливаются и отправляются в ArcFace пачками по 32 (один GPU-вызов вместо 32 отдельных)
+- **Асинхронная предзагрузка** — `ThreadPoolExecutor` (8 потоков) читает и ресайзит следующие изображения с диска, пока GPU обрабатывает текущее (глубина очереди 16)
+- **Параллельное выравнивание** — отдельный пул потоков для `norm_crop` (affine warp, releases GIL)
 - **Параллельное сохранение миниатюр** — отдельный пул потоков для I/O-операций записи crop-файлов
 - **Base64 embedding** — вместо JSON-массива из 512 чисел (~8 КБ) передаётся base64-encoded float32 (~2.7 КБ), трафик через pipe сокращён в 3 раза
+- **Диагностика провайдеров** — при инициализации в stderr выводятся реально используемые ONNX-провайдеры (позволяет убедиться, что CUDA активен)
 - **Перенаправление stdout** — диагностический вывод ONNX Runtime при инициализации перенаправляется в stderr, чтобы не засорять JSONL-поток
 
 Формат вывода:
