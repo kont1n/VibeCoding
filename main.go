@@ -130,6 +130,7 @@ func main() {
 		TotalFaces:   len(extractResult.Faces),
 		TotalPersons: len(clusters),
 		Errors:       extractResult.ErrorCount,
+		FileErrors:   extractResult.FileErrors,
 		Threshold:    *threshold,
 		GPU:          *gpu,
 	}

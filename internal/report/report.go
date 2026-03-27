@@ -16,10 +16,11 @@ type Report struct {
 	TotalImages  int            `json:"total_images"`
 	TotalFaces   int            `json:"total_faces"`
 	TotalPersons int            `json:"total_persons"`
-	Errors       int            `json:"errors"`
-	Threshold    float64        `json:"threshold"`
-	GPU          bool           `json:"gpu"`
-	Persons      []PersonReport `json:"persons"`
+	Errors       int               `json:"errors"`
+	FileErrors   map[string]string `json:"file_errors,omitempty"`
+	Threshold    float64           `json:"threshold"`
+	GPU          bool              `json:"gpu"`
+	Persons      []PersonReport    `json:"persons"`
 }
 
 type PersonReport struct {

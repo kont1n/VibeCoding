@@ -225,6 +225,97 @@
     font-size: 0.9rem;
   }
 
+  .stat-clickable {
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    margin: -0.4rem -0.6rem;
+    transition: background 0.2s;
+  }
+  .stat-clickable:hover {
+    background: rgba(233, 69, 96, 0.12);
+  }
+
+  .errors-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 5vh 1rem;
+    overflow-y: auto;
+  }
+  .errors-modal.active { display: flex; }
+  .errors-panel {
+    background: #14141e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .errors-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    position: sticky;
+    top: 0;
+    background: #14141e;
+    z-index: 1;
+  }
+  .errors-panel-header h3 {
+    font-size: 1.1rem;
+    color: #fff;
+    font-weight: 600;
+  }
+  .errors-panel-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.6rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .errors-panel-close:hover { color: #e94560; }
+  .errors-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .errors-table th {
+    text-align: left;
+    padding: 0.7rem 1.2rem;
+    color: #777;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .errors-table td {
+    padding: 0.6rem 1.2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    vertical-align: top;
+  }
+  .errors-table .err-file {
+    color: #ccc;
+    word-break: break-all;
+    max-width: 350px;
+  }
+  .errors-table .err-msg {
+    color: #e94560;
+    word-break: break-word;
+  }
+  .errors-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+  }
+
   @media (max-width: 600px) {
     .header { padding: 1.2rem; }
     .stats { gap: 1.5rem; }
@@ -259,6 +350,19 @@
   </div>
 </div>
 
+<div class="errors-modal" id="errors-modal">
+  <div class="errors-panel">
+    <div class="errors-panel-header">
+      <h3 id="errors-panel-title">Ошибки обработки</h3>
+      <button class="errors-panel-close" id="errors-modal-close">&times;</button>
+    </div>
+    <table class="errors-table">
+      <thead><tr><th>#</th><th>Файл</th><th>Ошибка</th></tr></thead>
+      <tbody id="errors-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <div class="modal" id="modal">
   <button class="modal-close">&times;</button>
   <img id="modal-img" src="" alt="">
@@ -287,13 +391,19 @@ function renderStats() {
     [report.total_images, 'Изображений'],
     [report.total_faces, 'Лиц'],
     [report.total_persons, 'Персон'],
-    [report.errors, 'Ошибок'],
+    [report.errors, 'Ошибок', report.errors > 0],
     [report.duration, 'Время'],
     [report.gpu ? 'GPU' : 'CPU', 'Режим'],
   ];
   s.innerHTML = items.map(function(item) {
-    return '<div class="stat"><span class="stat-value">' + item[0] + '</span><span class="stat-label">' + item[1] + '</span></div>';
+    var clickable = item[2] ? ' stat-clickable' : '';
+    var id = item[2] ? ' id="stat-errors"' : '';
+    return '<div class="stat' + clickable + '"' + id + '><span class="stat-value">' + item[0] + '</span><span class="stat-label">' + item[1] + '</span></div>';
   }).join('');
+
+  if (report.errors > 0) {
+    document.getElementById('stat-errors').addEventListener('click', showErrors);
+  }
 }
 
 function renderOverview() {
@@ -374,6 +484,28 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 
+function showErrors() {
+  var fe = report.file_errors || {};
+  var keys = Object.keys(fe);
+  var title = document.getElementById('errors-panel-title');
+  title.textContent = 'Ошибки обработки (' + keys.length + ')';
+
+  var tbody = document.getElementById('errors-tbody');
+  tbody.innerHTML = keys.map(function(file, i) {
+    return '<tr><td style="color:#555">' + (i + 1) + '</td>'
+      + '<td class="err-file">' + escapeHtml(file) + '</td>'
+      + '<td class="err-msg">' + escapeHtml(fe[file]) + '</td></tr>';
+  }).join('');
+
+  document.getElementById('errors-modal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeErrors() {
+  document.getElementById('errors-modal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
 function escapeHtml(text) {
   var div = document.createElement('div');
   div.textContent = text;
@@ -382,8 +514,13 @@ function escapeHtml(text) {
 
 document.getElementById('back-btn').addEventListener('click', showOverview);
 document.getElementById('modal').addEventListener('click', closeModal);
+document.getElementById('errors-modal-close').addEventListener('click', closeErrors);
+document.getElementById('errors-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeErrors();
+});
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    closeErrors();
     closeModal();
     if (document.getElementById('detail').classList.contains('active')) {
       showOverview();
