@@ -19,6 +19,8 @@ type Config struct {
 	Workers    int
 	GPU        bool
 	ThumbDir   string
+	MaxDim     int
+	GPUWorkers int
 }
 
 // Result aggregates extraction output and error statistics.
@@ -45,9 +47,17 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 	return res, nil
 }
 
-// extractBatch starts one Python process, streams paths via stdin, reads JSONL from stdout.
-// Model is loaded once — critical for GPU where init takes several seconds.
+// extractBatch launches one or more Python batch processes.
+// Multiple processes allow overlapping CPU preprocessing with GPU inference.
 func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
+	nWorkers := cfg.GPUWorkers
+	if nWorkers <= 0 {
+		nWorkers = 1
+	}
+	if nWorkers > len(files) {
+		nWorkers = len(files)
+	}
+
 	args := []string{cfg.ScriptPath, "--batch"}
 	if cfg.GPU {
 		args = append(args, "--gpu")
@@ -55,8 +65,49 @@ func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
 	if cfg.ThumbDir != "" {
 		args = append(args, "--thumb-dir", cfg.ThumbDir)
 	}
+	if cfg.MaxDim > 0 {
+		args = append(args, "--max-dim", fmt.Sprintf("%d", cfg.MaxDim))
+	}
 
-	cmd := exec.Command(cfg.PythonBin, args...)
+	chunks := make([][]string, nWorkers)
+	for i, f := range files {
+		chunks[i%nWorkers] = append(chunks[i%nWorkers], f)
+	}
+
+	var (
+		mu        sync.Mutex
+		processed int
+		total     = len(files)
+		errs      []error
+	)
+
+	var wg sync.WaitGroup
+	for wi := 0; wi < nWorkers; wi++ {
+		chunk := chunks[wi]
+		if len(chunk) == 0 {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := runBatchWorker(chunk, cfg.PythonBin, args, w, res, total, &mu, &processed); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
+}
+
+func runBatchWorker(files []string, pythonBin string, args []string, w io.Writer, res *Result, total int, mu *sync.Mutex, processed *int) error {
+	cmd := exec.Command(pythonBin, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("stdin pipe: %w", err)
@@ -82,8 +133,6 @@ func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 10*1024*1024), 10*1024*1024)
 
-	processed := 0
-	total := len(files)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
@@ -93,24 +142,28 @@ func extractBatch(files []string, cfg Config, w io.Writer, res *Result) error {
 			if len(raw) > 200 {
 				raw = raw[:200] + "..."
 			}
+			mu.Lock()
 			fmt.Fprintf(w, "WARN: skipping non-JSON output from python: %s\n", raw)
+			mu.Unlock()
 			continue
 		}
 
-		processed++
+		mu.Lock()
+		*processed++
+		p := *processed
 
 		if result.Error != "" {
-			fmt.Fprintf(w, "[%d/%d] ERROR %s: %s\n", processed, total, result.File, result.Error)
+			fmt.Fprintf(w, "[%d/%d] ERROR %s: %s\n", p, total, result.File, result.Error)
 			res.FileErrors[result.File] = result.Error
 			res.ErrorCount++
-			continue
+		} else {
+			for i := range result.Faces {
+				result.Faces[i].FilePath = result.File
+			}
+			res.Faces = append(res.Faces, result.Faces...)
+			fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", p, total, result.File, len(result.Faces))
 		}
-
-		for i := range result.Faces {
-			result.Faces[i].FilePath = result.File
-		}
-		res.Faces = append(res.Faces, result.Faces...)
-		fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, result.File, len(result.Faces))
+		mu.Unlock()
 	}
 
 	if err := cmd.Wait(); err != nil {
@@ -171,6 +224,9 @@ func extractOne(imagePath string, cfg Config) ([]models.Face, error) {
 	args := []string{cfg.ScriptPath, imagePath}
 	if cfg.ThumbDir != "" {
 		args = append(args, "--thumb-dir", cfg.ThumbDir)
+	}
+	if cfg.MaxDim > 0 {
+		args = append(args, "--max-dim", fmt.Sprintf("%d", cfg.MaxDim))
 	}
 
 	cmd := exec.Command(cfg.PythonBin, args...)

@@ -30,6 +30,8 @@ func main() {
 	threshold := flag.Float64("threshold", 0.5, "cosine similarity threshold for face grouping")
 	pythonBin := flag.String("python", "python", "path to Python interpreter")
 	gpu := flag.Bool("gpu", false, "use GPU (CUDA) for InsightFace")
+	gpuWorkers := flag.Int("gpu-workers", 2, "number of parallel GPU batch processes")
+	maxDim := flag.Int("max-dim", 1920, "downscale images so longest side <= this value (0 = no resize)")
 	serve := flag.Bool("serve", false, "start web UI after processing")
 	port := flag.Int("port", 8080, "web UI port")
 	describe := flag.Bool("describe", false, "generate person descriptions via LM Studio (Moondream2)")
@@ -86,9 +88,12 @@ func main() {
 	// --- Extract ---
 	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
 	if *gpu {
-		fmt.Fprintf(w, "Mode: GPU (CUDA), batch streaming\n")
+		fmt.Fprintf(w, "Mode: GPU (CUDA), %d batch process(es)\n", *gpuWorkers)
 	} else {
 		fmt.Fprintf(w, "Mode: CPU, %d worker(s)\n", *workers)
+	}
+	if *maxDim > 0 {
+		fmt.Fprintf(w, "Pre-resize: max %dpx\n", *maxDim)
 	}
 
 	extractCfg := extractor.Config{
@@ -97,6 +102,8 @@ func main() {
 		Workers:    *workers,
 		GPU:        *gpu,
 		ThumbDir:   thumbDir,
+		MaxDim:     *maxDim,
+		GPUWorkers: *gpuWorkers,
 	}
 	extractResult, err := extractor.Extract(files, extractCfg, w)
 	if err != nil {
