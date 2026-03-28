@@ -19,6 +19,8 @@ type Config struct {
 	Organizer env.OrganizerConfig
 	Web       env.WebConfig
 	Logger    env.LoggerConfig
+	Database  env.DatabaseConfig
+	Redis     env.RedisConfig
 }
 
 // Load загружает конфигурацию из .env файла и переменных окружения.
@@ -37,6 +39,8 @@ func Load(path string) error {
 		Organizer: env.NewOrganizerConfig(),
 		Web:       env.NewWebConfig(),
 		Logger:    env.NewLoggerConfig(),
+		Database:  env.NewDatabaseConfig(),
+		Redis:     env.NewRedisConfig(),
 	}
 
 	return nil

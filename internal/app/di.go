@@ -7,10 +7,12 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
+	"github.com/kont1n/face-grouper/internal/database"
 	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/inference/provider"
 	"github.com/kont1n/face-grouper/internal/repository/filesystem"
 	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
+	"github.com/kont1n/face-grouper/internal/repository/postgres"
 	"github.com/kont1n/face-grouper/internal/service/clustering"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
 	"github.com/kont1n/face-grouper/internal/service/organization"
@@ -21,6 +23,7 @@ import (
 // diContainer управляет зависимостями приложения с lazy initialization.
 type diContainer struct {
 	api *cli.API
+	db  *database.DB
 
 	scanService       scan.ScanService
 	extractionService extraction.ExtractionService
@@ -30,6 +33,11 @@ type diContainer struct {
 	scannerRepo    filesystem.ScannerRepository
 	detectorPool   []inferenceRepo.DetectorRepository
 	recognizerPool []inferenceRepo.RecognizerRepository
+}
+
+// SetDatabase устанавливает соединение с базой данных.
+func (d *diContainer) SetDatabase(db *database.DB) {
+	d.db = db
 }
 
 // NewDiContainer создаёт новый DI контейнер.
@@ -201,4 +209,44 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 		d.recognizerPool = pool
 	}
 	return d.recognizerPool
+}
+
+// PersonRepository возвращает репозиторий персон.
+func (d *diContainer) PersonRepository() *postgres.PersonRepository {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Persons
+}
+
+// FaceRepository возвращает репозиторий лиц.
+func (d *diContainer) FaceRepository() *postgres.FaceRepository {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Faces
+}
+
+// PhotoRepository возвращает репозиторий фото.
+func (d *diContainer) PhotoRepository() *postgres.PhotoRepository {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Photos
+}
+
+// RelationRepository возвращает репозиторий связей.
+func (d *diContainer) RelationRepository() *postgres.RelationRepository {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Relations
+}
+
+// SessionRepository возвращает репозиторий сессий.
+func (d *diContainer) SessionRepository() *postgres.SessionRepository {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Sessions
 }

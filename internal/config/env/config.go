@@ -54,6 +54,30 @@ type LoggerConfig struct {
 	AsJSON bool
 }
 
+// DatabaseConfig хранит настройки базы данных.
+type DatabaseConfig struct {
+	Host              string
+	Port              int
+	Database          string
+	User              string
+	Password          string
+	SSLMode           string
+	MaxConns          int
+	MinConns          int
+	MaxConnLifetime   int
+	MaxConnIdleTime   int
+	HealthCheckPeriod int
+	RunMigrations     bool
+}
+
+// RedisConfig хранит настройки Redis.
+type RedisConfig struct {
+	Host     string
+	Port     int
+	Password string
+	DB       int
+}
+
 // NewAppConfig создаёт конфигурацию приложения из ENV.
 func NewAppConfig() AppConfig {
 	return AppConfig{
@@ -114,6 +138,34 @@ func NewLoggerConfig() LoggerConfig {
 	return LoggerConfig{
 		Level:  getEnv("LOG_LEVEL", "info"),
 		AsJSON: getBool("LOG_JSON", false),
+	}
+}
+
+// NewDatabaseConfig создаёт конфигурацию базы данных из ENV.
+func NewDatabaseConfig() DatabaseConfig {
+	return DatabaseConfig{
+		Host:              getEnv("DB_HOST", "localhost"),
+		Port:              getInt("DB_PORT", 5432),
+		Database:          getEnv("DB_NAME", "face-grouper"),
+		User:              getEnv("DB_USER", "face-grouper"),
+		Password:          getEnv("DB_PASSWORD", "secret"),
+		SSLMode:           getEnv("DB_SSLMODE", "disable"),
+		MaxConns:          getInt("DB_MAX_CONNS", 25),
+		MinConns:          getInt("DB_MIN_CONNS", 5),
+		MaxConnLifetime:   getInt("DB_MAX_CONN_LIFETIME", 3600),
+		MaxConnIdleTime:   getInt("DB_MAX_CONN_IDLE_TIME", 1800),
+		HealthCheckPeriod: getInt("DB_HEALTH_CHECK_PERIOD", 60),
+		RunMigrations:     getBool("DB_RUN_MIGRATIONS", true),
+	}
+}
+
+// NewRedisConfig создаёт конфигурацию Redis из ENV.
+func NewRedisConfig() RedisConfig {
+	return RedisConfig{
+		Host:     getEnv("REDIS_HOST", "localhost"),
+		Port:     getInt("REDIS_PORT", 6379),
+		Password: getEnv("REDIS_PASSWORD", ""),
+		DB:       getInt("REDIS_DB", 0),
 	}
 }
 

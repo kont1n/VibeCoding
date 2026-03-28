@@ -41,6 +41,7 @@ func New(ctx context.Context) (*App, error) {
 func (a *App) initDeps(ctx context.Context) error {
 	inits := []func(context.Context) error{
 		a.initDI,
+		a.initDatabase,
 		a.initLogger,
 		a.initCloser,
 	}
@@ -57,6 +58,42 @@ func (a *App) initDeps(ctx context.Context) error {
 // initDI инициализирует DI контейнер.
 func (a *App) initDI(_ context.Context) error {
 	a.diContainer = NewDiContainer()
+	return nil
+}
+
+// initDatabase инициализирует базу данных.
+func (a *App) initDatabase(ctx context.Context) error {
+	cfg := config.AppConfig.Database
+	
+	db, err := database.New(ctx, cfg)
+	if err != nil {
+		// Database is optional for now, log warning and continue
+		logger.Warn(ctx, "database initialization failed (running without database)",
+			zap.Error(err),
+		)
+		return nil
+	}
+	
+	a.diContainer.SetDatabase(db)
+	
+	// Register database close
+	closer.AddNamed("database", func(ctx context.Context) error {
+		db.Close()
+		return nil
+	})
+	
+	// Log database health
+	health, err := db.Health(ctx)
+	if err != nil {
+		logger.Warn(ctx, "database health check failed", zap.Error(err))
+	} else {
+		logger.Info(ctx, "database connected",
+			zap.String("version", health.Version),
+			zap.Int32("connections", health.Connections),
+			zap.Strings("extensions", health.Extensions),
+		)
+	}
+	
 	return nil
 }
 
