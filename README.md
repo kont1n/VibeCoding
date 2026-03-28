@@ -23,6 +23,7 @@
 - [Docker Deployment](docs/DOCKER.md)
 - [Quick Start](docs/QUICKSTART.md)
 - [Download Models](docs/DOWNLOAD_MODELS.md)
+- [Database Guide](docs/DATABASE.md) ⭐ NEW
 - [Documentation Index](docs/README.md)
 - [GPU Setup](docs/DOCKER.md#gpu-support)
 
@@ -42,15 +43,20 @@ internal/
 ├── config/                    # Конфигурация (.env + ENV)
 │   ├── config.go
 │   └── env/
+├── database/                  # PostgreSQL интеграция
+│   ├── database.go           # DB connection & repositories
+│   ├── migrations.go         # Auto-migrations
+│   └── postgres/             # Connection pool & health
 ├── model/                     # Доменные модели (Face, Cluster)
 ├── repository/                # Слой доступа к данным
-│   ├── filesystem/            # Сканирование файлов
-│   └── inference/             # ONNX Runtime inference
+│   ├── filesystem/           # Сканирование файлов
+│   ├── inference/            # ONNX Runtime inference
+│   └── postgres/             # PostgreSQL repositories
 ├── service/                   # Бизнес-логика
-│   ├── scan/                  # Сканирование директорий
-│   ├── extraction/            # Извлечение эмбеддингов
-│   ├── clustering/            # Кластеризация лиц
-│   └── organization/          # Организация результатов
+│   ├── scan/                 # Сканирование директорий
+│   ├── extraction/           # Извлечение эмбеддингов
+│   ├── clustering/           # Кластеризация лиц
+│   └── organization/         # Организация результатов
 └── ...
 
 platform/pkg/                  # Платформенные пакеты
@@ -111,8 +117,43 @@ flowchart LR
 | ОС | Windows / Linux / macOS | |
 | GPU (опционально) | NVIDIA + CUDA 11.8+ | Для GPU-ускорения |
 | cuDNN (опционально) | 8.x | Для GPU-ускорения |
+| **PostgreSQL (опционально)** | **16+ с pgvector** | **Для персистентного хранения** |
 
 > **Примечание:** С версии 0.2 проект использует чистый Go для обработки изображений и больше не требует OpenCV/gocv.
+
+### PostgreSQL Integration ⭐ NEW
+
+Для работы с базой данных требуется:
+
+1. **PostgreSQL 16+** — https://www.postgresql.org/download/
+2. **pgvector** — расширение для векторного поиска
+
+**Быстрый старт с Docker:**
+
+```bash
+# Запуск PostgreSQL с pgvector
+docker run -d --name face-grouper-db \
+  -e POSTGRES_DB=face-grouper \
+  -e POSTGRES_USER=face-grouper \
+  -e POSTGRES_PASSWORD=secret \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+
+# Настройка .env
+echo "DB_HOST=localhost" >> .env
+echo "DB_PASSWORD=secret" >> .env
+echo "DB_RUN_MIGRATIONS=true" >> .env
+```
+
+**Возможности:**
+- ✅ Персистентное хранение результатов
+- ✅ Векторный поиск похожих лиц (cosine similarity)
+- ✅ Full-text search по именам (русский язык)
+- ✅ Граф связей между персонами
+- ✅ Трекинг сессий обработки
+- ✅ Auto-migrations при старте
+
+📖 **Подробная документация:** [docs/DATABASE.md](docs/DATABASE.md)
 
 ### Требования для GPU режима
 
