@@ -8,7 +8,6 @@ C:.
 |   .golangci.yml
 |   .mockery.yaml
 |   .pre-commit-config.yaml
-|   docker-compose.yml
 |   face-grouper.exe
 |   go.mod
 |   go.sum
@@ -719,6 +718,7 @@ C:.
 |       
 +---deploy
 |   \---docker
+|           docker-compose.yml
 |           Dockerfile
 |           Dockerfile.nvidia
 |           Dockerfile.rocm
