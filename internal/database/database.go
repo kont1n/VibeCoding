@@ -17,7 +17,7 @@ import (
 type DB struct {
 	Pool *pgxpool.Pool
 
-	// Repositories
+	// Repositories.
 	Persons   *repopostgres.PersonRepository
 	Faces     *repopostgres.FaceRepository
 	Photos    *repopostgres.PhotoRepository
@@ -27,7 +27,7 @@ type DB struct {
 
 // New creates a new database connection and initializes repositories.
 func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
-	// Create connection pool
+	// Create connection pool.
 	pool, err := dbpostgres.NewPool(ctx, dbpostgres.Config{
 		Host:              cfg.Host,
 		Port:              cfg.Port,
@@ -45,7 +45,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("create pool: %w", err)
 	}
 
-	// Run migrations if enabled
+	// Run migrations if enabled.
 	if cfg.RunMigrations {
 		migrator := Migrator{pool: pool}
 		if err := migrator.Migrate(ctx); err != nil {
@@ -54,7 +54,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 		}
 	}
 
-	// Create repositories
+	// Create repositories.
 	db := &DB{
 		Pool:      pool,
 		Persons:   repopostgres.NewPersonRepository(pool),

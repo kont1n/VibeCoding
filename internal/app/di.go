@@ -108,7 +108,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
 
-		// Determine preferred provider type
+		// Determine preferred provider type.
 		var preferred provider.ProviderType
 		if cfg.GPU {
 			preferred = provider.ProviderCUDA
@@ -146,7 +146,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 			}
 			pool[i] = det
 
-			// Регистрация в graceful shutdown
+			// Регистрация в graceful shutdown.
 			closer.AddNamed(fmt.Sprintf("Detector %d", i), func(ctx context.Context) error {
 				det.Close()
 				return nil
@@ -163,7 +163,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
 
-		// Determine preferred provider type
+		// Determine preferred provider type.
 		var preferred provider.ProviderType
 		if cfg.GPU {
 			preferred = provider.ProviderCUDA
@@ -200,7 +200,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 			}
 			pool[i] = rec
 
-			// Регистрация в graceful shutdown
+			// Регистрация в graceful shutdown.
 			closer.AddNamed(fmt.Sprintf("Recognizer %d", i), func(ctx context.Context) error {
 				rec.Close()
 				return nil

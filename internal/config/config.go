@@ -25,7 +25,7 @@ type Config struct {
 
 // Load загружает конфигурацию из .env файла и переменных окружения.
 func Load(path string) error {
-	// Overload перезаписывает существующие переменные окружения
+	// Overload перезаписывает существующие переменные окружения.
 	err := godotenv.Overload(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err

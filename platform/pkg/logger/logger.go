@@ -60,7 +60,7 @@ func Logger() *zap.Logger {
 }
 
 // Debug логирует сообщение уровня DEBUG.
-func Debug(ctx context.Context, msg string, fields ...interface{}) {
+func Debug(ctx context.Context, msg string, fields ...any) {
 	if !initialized || log == nil {
 		return
 	}
@@ -68,7 +68,7 @@ func Debug(ctx context.Context, msg string, fields ...interface{}) {
 }
 
 // Info логирует сообщение уровня INFO.
-func Info(ctx context.Context, msg string, fields ...interface{}) {
+func Info(ctx context.Context, msg string, fields ...any) {
 	if !initialized || log == nil {
 		return
 	}
@@ -76,7 +76,7 @@ func Info(ctx context.Context, msg string, fields ...interface{}) {
 }
 
 // Warn логирует сообщение уровня WARN.
-func Warn(ctx context.Context, msg string, fields ...interface{}) {
+func Warn(ctx context.Context, msg string, fields ...any) {
 	if !initialized || log == nil {
 		return
 	}
@@ -84,7 +84,7 @@ func Warn(ctx context.Context, msg string, fields ...interface{}) {
 }
 
 // Error логирует сообщение уровня ERROR.
-func Error(ctx context.Context, msg string, fields ...interface{}) {
+func Error(ctx context.Context, msg string, fields ...any) {
 	if !initialized || log == nil {
 		return
 	}
@@ -92,7 +92,7 @@ func Error(ctx context.Context, msg string, fields ...interface{}) {
 }
 
 // fieldsToZapFields преобразует интерфейс keys/values в zap.Field.
-func fieldsToZapFields(fields []interface{}) []zap.Field {
+func fieldsToZapFields(fields []any) []zap.Field {
 	zapFields := make([]zap.Field, 0, len(fields)/2)
 	for i := 0; i < len(fields)-1; i += 2 {
 		if key, ok := fields[i].(string); ok {

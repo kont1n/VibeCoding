@@ -50,7 +50,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 		}
 	}
 
-	// Clean only Person_* dirs and old report — preserve .thumbnails, avatars and logs
+	// Clean only Person_* dirs and old report — preserve .thumbnails, avatars and logs.
 	if entries, err := os.ReadDir(outputDir); err == nil {
 		for _, e := range entries {
 			name := e.Name()

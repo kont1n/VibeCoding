@@ -9,28 +9,29 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/kont1n/face-grouper/internal/app"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
-	"go.uber.org/zap"
 )
 
 const configPath = ".env"
 
 func main() {
-	// CLI флаги для переопределения .env
+	// CLI флаги для переопределения .env.
 	viewOnly := flag.Bool("view", false, "only start web UI without processing")
 	serve := flag.Bool("serve", false, "start web UI after processing")
 	port := flag.Int("port", 8080, "web UI port")
 	flag.Parse()
 
-	// Загрузка конфигурации
+	// Загрузка конфигурации.
 	if err := config.Load(configPath); err != nil {
 		panic(fmt.Errorf("failed to load config: %w", err))
 	}
 
-	// Переопределение из CLI
+	// Переопределение из CLI.
 	if *serve {
 		config.AppConfig.Web.Serve = true
 	}
@@ -41,22 +42,22 @@ func main() {
 		config.AppConfig.Web.Port = *port
 	}
 
-	// Контекст с сигналом завершения
+	// Контекст с сигналом завершения.
 	appCtx, appCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer appCancel()
 	defer gracefulShutdown()
 
-	// Настройка closer
+	// Настройка closer.
 	closer.Configure(syscall.SIGINT, syscall.SIGTERM)
 
-	// Создание приложения
+	// Создание приложения.
 	a, err := app.New(appCtx)
 	if err != nil {
 		logger.Error(appCtx, "failed to create app", zap.Error(err))
 		return
 	}
 
-	// Запуск
+	// Запуск.
 	err = a.Run(appCtx, *viewOnly)
 	if err != nil {
 		logger.Error(appCtx, "app error", zap.Error(err))

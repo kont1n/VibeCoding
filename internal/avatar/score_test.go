@@ -36,16 +36,16 @@ func TestEstimateFrontalPoseFactorFromKeypoints(t *testing.T) {
 	t.Parallel()
 
 	frontKps := [5][2]float64{
-		{30, 30}, // left eye
-		{70, 30}, // right eye
-		{50, 45}, // nose
-		{35, 65}, // left mouth
-		{65, 65}, // right mouth
+		{30, 30}, {30, 30}, // left eye.
+		{70, 30}, {70, 30}, // right eye.
+		{50, 45}, {50, 45}, // nose.
+		{35, 65}, {35, 65}, // left mouth.
+		{65, 65}, {65, 65}, // right mouth.
 	}
 	sideKps := [5][2]float64{
 		{30, 30},
 		{70, 35},
-		{63, 46}, // shifted nose
+		{63, 46}, {63, 46}, // shifted nose.
 		{35, 65},
 		{65, 72},
 	}

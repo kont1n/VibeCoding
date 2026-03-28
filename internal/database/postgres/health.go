@@ -21,19 +21,19 @@ type HealthStatus struct {
 func CheckHealth(ctx context.Context, pool *pgxpool.Pool) (*HealthStatus, error) {
 	start := time.Now()
 
-	// Check connection
+	// Check connection.
 	if err := pool.Ping(ctx); err != nil {
 		return &HealthStatus{Status: "unhealthy"}, fmt.Errorf("ping: %w", err)
 	}
 
-	// Get PostgreSQL version
+	// Get PostgreSQL version.
 	var version string
 	err := pool.QueryRow(ctx, "SELECT version()").Scan(&version)
 	if err != nil {
 		return &HealthStatus{Status: "degraded"}, fmt.Errorf("version: %w", err)
 	}
 
-	// Check installed extensions
+	// Check installed extensions.
 	rows, err := pool.Query(ctx, `
 		SELECT extname 
 		FROM pg_extension 
@@ -54,7 +54,7 @@ func CheckHealth(ctx context.Context, pool *pgxpool.Pool) (*HealthStatus, error)
 		extensions = append(extensions, ext)
 	}
 
-	// Get connection statistics
+	// Get connection statistics.
 	stats := pool.Stat()
 
 	return &HealthStatus{

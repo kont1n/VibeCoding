@@ -25,13 +25,13 @@ func NewMigrator(pool *pgxpool.Pool) *Migrator {
 
 // Migrate runs all pending migrations using pgx directly.
 func (m *Migrator) Migrate(ctx context.Context) error {
-	// Read all migration files
+	// Read all migration files.
 	files, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	// Apply migrations in order
+	// Apply migrations in order.
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -42,8 +42,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 			return fmt.Errorf("read migration %s: %w", file.Name(), err)
 		}
 
-		// Execute migration
-		// Split by semicolons to handle multiple statements
+		// Split by semicolons to handle multiple statements.
 		statements := strings.Split(string(content), ";")
 		for _, stmt := range statements {
 			stmt = strings.TrimSpace(stmt)
@@ -53,7 +52,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 			_, err = m.pool.Exec(ctx, stmt)
 			if err != nil {
-				// Ignore "already exists" errors
+				// Ignore "already exists" errors.
 				if strings.Contains(err.Error(), "already exists") {
 					continue
 				}

@@ -5,8 +5,9 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/kont1n/face-grouper/internal/inference/provider"
 	ort "github.com/yalue/onnxruntime_go"
+
+	"github.com/kont1n/face-grouper/internal/inference/provider"
 )
 
 var ortInitialized bool
@@ -43,7 +44,7 @@ func SelectAndInitializeProvider(cfg ProviderConfig, libPath string) error {
 		return nil
 	}
 
-	// Select provider
+	// Select provider.
 	selectionCfg := provider.SelectionConfig{
 		ForceCPU:      cfg.ForceCPU,
 		Preferred:     cfg.Preferred,
@@ -58,7 +59,7 @@ func SelectAndInitializeProvider(cfg ProviderConfig, libPath string) error {
 
 	selectedProvider = selected
 
-	// Initialize ONNX Runtime
+	// Initialize ONNX Runtime.
 	if libPath == "" {
 		switch runtime.GOOS {
 		case "windows":
@@ -119,7 +120,7 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 		}
 	}
 
-	// Add execution provider based on selection
+	// Add execution provider based on selection.
 	providerType := cfg.Preferred
 	if cfg.ForceCPU {
 		providerType = provider.ProviderCPU
@@ -142,10 +143,10 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 			return nil, fmt.Errorf("configure CUDA provider options: %w", err)
 		}
 		if err := opts.AppendExecutionProviderCUDA(cudaOpts); err != nil {
-			// Fallback to CPU if CUDA fails and allowed
+			// Fallback to CPU if CUDA fails and allowed.
 			if cfg.AllowFallback {
 				cudaOpts.Destroy()
-				// Continue without GPU - already logged warning
+				// Continue without GPU - already logged warning.
 			} else {
 				cudaOpts.Destroy()
 				opts.Destroy()
@@ -156,24 +157,21 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 		}
 
 	case provider.ProviderROCm:
-		// ROCm support not available in this version of onnxruntime_go
-		// Fallback to CPU
+		// Fallback to CPU.
 		if !cfg.AllowFallback {
 			return nil, fmt.Errorf("ROCm provider not available in this build")
 		}
-		// Continue with CPU fallback
+		// Continue with CPU fallback.
 
 	case provider.ProviderDirectML:
-		// DirectML support depends on onnxruntime_go version
-		// For now, fallback to CPU
+		// For now, fallback to CPU.
 		if !cfg.AllowFallback {
 			return nil, fmt.Errorf("DirectML provider not available in this build")
 		}
-		// Continue with CPU fallback
+		// Continue with CPU fallback.
 
 	case provider.ProviderCoreML:
-		// CoreML is typically auto-selected on macOS
-		// No special configuration needed
+		// No special configuration needed.
 		break
 	}
 

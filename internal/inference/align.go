@@ -71,14 +71,14 @@ func estimateSimilarityTransform(src, dst [][2]float64) [2][3]float64 {
 	}
 	srcVar /= fn
 	if srcVar < 1e-10 {
-		// Source points are nearly identical; return identity transform
+		// Source points are nearly identical; return identity transform.
 		return [2][3]float64{
 			{1, 0, dstMean[0] - srcMean[0]},
 			{0, 1, dstMean[1] - srcMean[1]},
 		}
 	}
 
-	// Cross-covariance matrix (2x2): C = (1/n) * dst^T * src
+	// Cross-covariance matrix (2x2): C = (1/n) * dst^T * src.
 	var a, b, c, d float64
 	for i := 0; i < n; i++ {
 		a += dstC[i][0] * srcC[i][0]
@@ -101,7 +101,7 @@ func estimateSimilarityTransform(src, dst [][2]float64) [2][3]float64 {
 		u[1][1] = -u[1][1]
 	}
 
-	// R = U * Vt
+	// R = U * Vt.
 	r00 := u[0][0]*vt[0][0] + u[0][1]*vt[1][0]
 	r01 := u[0][0]*vt[0][1] + u[0][1]*vt[1][1]
 	r10 := u[1][0]*vt[0][0] + u[1][1]*vt[1][0]

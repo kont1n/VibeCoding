@@ -12,7 +12,7 @@ type CloseFunc func(context.Context) error
 
 // Logger определяет интерфейс для логирования (чтобы избежать циклической зависимости).
 type Logger interface {
-	Error(msg string, fields ...interface{})
+	Error(msg string, fields ...any)
 }
 
 // zapLogger адаптирует zap.Logger к нашему интерфейсу Logger.
@@ -20,11 +20,11 @@ type zapLogger struct {
 	log *zap.Logger
 }
 
-func (z *zapLogger) Error(msg string, fields ...interface{}) {
+func (z *zapLogger) Error(msg string, fields ...any) {
 	z.log.Error(msg, fieldsToZapFields(fields)...)
 }
 
-func fieldsToZapFields(fields []interface{}) []zap.Field {
+func fieldsToZapFields(fields []any) []zap.Field {
 	zapFields := make([]zap.Field, 0, len(fields)/2)
 	for i := 0; i < len(fields)-1; i += 2 {
 		if key, ok := fields[i].(string); ok {
@@ -43,7 +43,7 @@ var (
 )
 
 // Configure инициализирует closer с сигналами завершения (вызывается один раз в main).
-func Configure(signals ...interface{}) {
+func Configure(signals ...any) {
 	mu.Lock()
 	defer mu.Unlock()
 	configured = true
@@ -77,7 +77,7 @@ func CloseAll(ctx context.Context) error {
 
 	var lastErr error
 
-	// Закрытие именованных ресурсов
+	// Закрытие именованных ресурсов.
 	for name, fn := range namedClosers {
 		if err := fn(ctx); err != nil {
 			if logger != nil {
@@ -87,7 +87,7 @@ func CloseAll(ctx context.Context) error {
 		}
 	}
 
-	// Закрытие общих ресурсов (в обратном порядке)
+	// Закрытие общих ресурсов (в обратном порядке).
 	for i := len(closers) - 1; i >= 0; i-- {
 		if err := closers[i](ctx); err != nil {
 			lastErr = err

@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kont1n/face-grouper/internal/imageutil"
 	ort "github.com/yalue/onnxruntime_go"
+
+	"github.com/kont1n/face-grouper/internal/imageutil"
 )
 
 // Detector wraps an SCRFD ONNX model for face detection.
@@ -118,7 +119,7 @@ func (d *Detector) Detect(img *imageutil.Image) ([]Detection, error) {
 	detW := int(d.inputW)
 	detH := int(d.inputH)
 
-	// Compute letterbox resize keeping aspect ratio
+	// Compute letterbox resize keeping aspect ratio.
 	imRatio := float32(imgH) / float32(imgW)
 	modelRatio := float32(detH) / float32(detW)
 
@@ -132,15 +133,15 @@ func (d *Detector) Detect(img *imageutil.Image) ([]Detection, error) {
 	}
 	detScale := float32(newH) / float32(imgH)
 
-	// Resize image
+	// Resize image.
 	resized := imageutil.Resize(img, newW, newH)
 	defer resized.Close()
 
-	// Create canvas and paste resized image
+	// Create canvas and paste resized image.
 	detImg := imageutil.NewImage(detW, detH)
 	defer detImg.Close()
 
-	// Copy resized image to canvas (BGR format)
+	// Copy resized image to canvas (BGR format).
 	for y := 0; y < newH; y++ {
 		for x := 0; x < newW; x++ {
 			srcIdx := (y*newW + x) * 3

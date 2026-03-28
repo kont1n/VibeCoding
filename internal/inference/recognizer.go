@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/kont1n/face-grouper/internal/imageutil"
 	ort "github.com/yalue/onnxruntime_go"
+
+	"github.com/kont1n/face-grouper/internal/imageutil"
 )
 
 // Recognizer wraps an ArcFace ONNX model for face embedding extraction.
@@ -80,7 +81,7 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 	h := r.inputSize
 	w := r.inputSize
 
-	// Build blob manually from images
+	// Build blob manually from images.
 	blob := make([]float32, batchSize*3*h*w)
 	invStd := 1.0 / float64(r.inputStd)
 	mean := float64(r.inputMean)
@@ -89,27 +90,25 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 		if face.Empty() {
 			return nil, fmt.Errorf("empty face image at index %d", b)
 		}
-		// Resize if needed
+		// Resize if needed.
 		img := face
 		if face.Width != r.inputSize || face.Height != r.inputSize {
 			img = imageutil.Resize(face, r.inputSize, r.inputSize)
 			defer img.Close()
 		}
 
-		// Convert to NCHW blob with normalization
-		// ArcFace expects RGB order (not BGR!)
-		// NCHW format: [batch, channel, height, width]
+		// NCHW format: [batch, channel, height, width].
 		channelSize := h * w
 		for y := 0; y < h; y++ {
 			for x := 0; x < w; x++ {
 				srcIdx := (y*img.Width + x) * 3
 				pos := y*w + x
 
-				// R channel (channel 0) - note: img.Data is BGR, so [srcIdx+2] is R
+				// R channel (channel 0) - note: img.Data is BGR, so [srcIdx+2] is R.
 				blob[b*3*channelSize+pos] = float32((float64(img.Data[srcIdx+2]) - mean) * invStd)
-				// G channel (channel 1)
+				// G channel (channel 1).
 				blob[b*3*channelSize+channelSize+pos] = float32((float64(img.Data[srcIdx+1]) - mean) * invStd)
-				// B channel (channel 2)
+				// B channel (channel 2).
 				blob[b*3*channelSize+channelSize*2+pos] = float32((float64(img.Data[srcIdx]) - mean) * invStd)
 			}
 		}

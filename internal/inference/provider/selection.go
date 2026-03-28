@@ -30,7 +30,7 @@ func DefaultSelectionConfig() SelectionConfig {
 
 // SelectProvider selects the best available provider based on configuration.
 func SelectProvider(cfg SelectionConfig) (ProviderInfo, error) {
-	// Force CPU if requested
+	// Force CPU if requested.
 	if cfg.ForceCPU {
 		return ProviderInfo{
 			Type:      ProviderCPU,
@@ -40,10 +40,10 @@ func SelectProvider(cfg SelectionConfig) (ProviderInfo, error) {
 		}, nil
 	}
 
-	// Detect available providers
+	// Detect available providers.
 	detection := DetectAvailableProviders()
 
-	// If preferred provider is specified, try to use it
+	// If preferred provider is specified, try to use it.
 	if cfg.Preferred != "" && cfg.Preferred != ProviderCPU {
 		for _, p := range detection.Providers {
 			if p.Type == cfg.Preferred && p.Available {
@@ -54,16 +54,16 @@ func SelectProvider(cfg SelectionConfig) (ProviderInfo, error) {
 			}
 		}
 
-		// Preferred provider not available
+		// Preferred provider not available.
 		if !cfg.AllowFallback {
 			return ProviderInfo{}, fmt.Errorf("preferred provider %s not available", cfg.Preferred)
 		}
 	}
 
-	// Use auto selection (best available)
+	// Use auto selection (best available).
 	selected := detection.Selected
 
-	// Override device ID if specified
+	// Override device ID if specified.
 	if cfg.DeviceID >= 0 && selected.Type != ProviderCPU {
 		selected.DeviceID = cfg.DeviceID
 	}
@@ -104,7 +104,7 @@ func getEnvBool(key string, defaultValue bool) bool {
 }
 
 // LogProviderSelection logs the provider selection decision.
-func LogProviderSelection(selected ProviderInfo, fallback bool, logFunc func(level string, msg string, keysAndValues ...interface{})) {
+func LogProviderSelection(selected ProviderInfo, fallback bool, logFunc func(level string, msg string, keysAndValues ...any)) {
 	if logFunc == nil {
 		return
 	}

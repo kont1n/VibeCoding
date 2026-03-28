@@ -47,7 +47,7 @@ func (s *organizeService) Organize(ctx context.Context, clusters []model.Cluster
 		return nil, err
 	}
 
-	// Конвертация в наш тип
+	// Конвертация в наш тип.
 	persons := make([]PersonInfo, len(personInfos))
 	for i, p := range personInfos {
 		persons[i] = PersonInfo(p)

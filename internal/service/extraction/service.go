@@ -66,25 +66,25 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 		workers = 1
 	}
 
-	// Создаём пул детекторов
+	// Создаём пул детекторов.
 	detPool := make(chan inferenceRepo.DetectorRepository, len(s.detectorPool))
 	for _, det := range s.detectorPool {
 		detPool <- det
 	}
 
-	// Создаём пул распознавателей
+	// Создаём пул распознавателей.
 	recPool := make(chan inferenceRepo.RecognizerRepository, len(s.recPool))
 	for _, rec := range s.recPool {
 		recPool <- rec
 	}
 
-	// Получаем размер входа модели распознавания
+	// Получаем размер входа модели распознавания.
 	var recSize int
 	if len(s.recPool) > 0 {
 		recSize = s.recPool[0].InputSize()
 	}
 
-	// Batcher для распознавания
+	// Batcher для распознавания.
 	embedBatchSize := s.cfg.EmbedBatchSize
 	if embedBatchSize <= 0 {
 		embedBatchSize = 64
@@ -171,7 +171,7 @@ func (s *extractionService) processImage(
 		return nil, fmt.Errorf("empty image: %s", imagePath)
 	}
 
-	// Опциональный downscale
+	// Опциональный downscale.
 	if s.cfg.MaxDim > 0 {
 		maxSide := img.Height
 		if img.Width > maxSide {
@@ -187,7 +187,7 @@ func (s *extractionService) processImage(
 		}
 	}
 
-	// Детекция
+	// Детекция.
 	det := <-detPool
 	defer func() { detPool <- det }()
 
@@ -199,7 +199,7 @@ func (s *extractionService) processImage(
 		return nil, nil
 	}
 
-	// Выравнивание лиц
+	// Выравнивание лиц.
 	aligned := make([]*imageutil.Image, len(dets))
 	for i, d := range dets {
 		aligned[i] = inference.NormCrop(img, d.Kps, recSize)
@@ -212,13 +212,13 @@ func (s *extractionService) processImage(
 		}
 	}()
 
-	// Распознавание
+	// Распознавание.
 	embeddings, err := recBatcher.Infer(aligned)
 	if err != nil {
 		return nil, fmt.Errorf("recognition: %w", err)
 	}
 
-	// Сборка результатов
+	// Сборка результатов.
 	faces := make([]model.Face, len(dets))
 	for i, d := range dets {
 		thumb := ""

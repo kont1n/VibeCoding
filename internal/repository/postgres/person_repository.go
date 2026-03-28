@@ -328,7 +328,7 @@ func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []flo
 			return nil, fmt.Errorf("scan similar face: %w", err)
 		}
 
-		// Copy embedding data
+		// Copy embedding data.
 		face.Face.Embedding = make([]float64, len(embeddingVec.Slice()))
 		for i, v := range embeddingVec.Slice() {
 			face.Face.Embedding[i] = float64(v)
@@ -353,7 +353,7 @@ func (r *PersonRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// Helper functions
+// Helper functions.
 func nullStringToSql(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{Valid: false}

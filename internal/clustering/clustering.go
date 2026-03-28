@@ -4,8 +4,9 @@ import (
 	"math"
 	"sync"
 
-	"github.com/kont1n/face-grouper/internal/model"
 	"gonum.org/v1/gonum/mat"
+
+	"github.com/kont1n/face-grouper/internal/model"
 )
 
 type unionFind struct {
@@ -63,7 +64,7 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 		return nil
 	}
 
-	// L2-normalize embeddings (defensive, even if recognizer already normalized)
+	// L2-normalize embeddings (defensive, even if recognizer already normalized).
 	embData := make([]float64, n*dim)
 	for i, f := range faces {
 		norm := 0.0

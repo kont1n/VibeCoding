@@ -30,7 +30,7 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 	`
 
-	// Convert []float64 to []float32 for pgvector
+	// Convert []float64 to []float32 for pgvector.
 	embedding32 := make([]float32, len(face.Embedding))
 	for i, v := range face.Embedding {
 		embedding32[i] = float32(v)
@@ -87,7 +87,7 @@ func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face
 		return nil, err
 	}
 
-	// Convert pgvector.Vector ([]float32) to []float64
+	// Convert pgvector.Vector ([]float32) to []float64.
 	vecSlice := embeddingVec.Slice()
 	face.Embedding = make([]float64, len(vecSlice))
 	for i, v := range vecSlice {
@@ -221,7 +221,7 @@ func (r *FaceRepository) Count(ctx context.Context) (int, error) {
 	return count, err
 }
 
-// Helper
+// Helper.
 func float32SliceToFloat64Slice(in []float32) []float64 {
 	out := make([]float64, len(in))
 	for i, v := range in {
@@ -230,7 +230,7 @@ func float32SliceToFloat64Slice(in []float32) []float64 {
 	return out
 }
 
-func uuidFromSql(id interface{}) uuid.UUID {
+func uuidFromSql(id any) uuid.UUID {
 	if uid, ok := id.(uuid.UUID); ok {
 		return uid
 	}

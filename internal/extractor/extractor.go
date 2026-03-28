@@ -12,6 +12,7 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/imageutil"
 	"github.com/kont1n/face-grouper/internal/inference"
+	"github.com/kont1n/face-grouper/internal/inference/provider"
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
@@ -102,7 +103,12 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 	for i := 0; i < detSessions; i++ {
 		det, err := inference.NewDetector(inference.DetectorConfig{
 			ModelPath: detPath,
-			GPU:       cfg.GPU,
+			Provider: inference.ProviderConfig{
+				Preferred:     getProviderType(cfg.GPU),
+				ForceCPU:      cfg.ForceCPU,
+				DeviceID:      cfg.GPUDeviceID,
+				AllowFallback: true,
+			},
 			DetThresh: cfg.DetThresh,
 			NMSThresh: cfg.NMSThresh,
 		})
@@ -118,7 +124,12 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 	for i := 0; i < recSessions; i++ {
 		rec, err := inference.NewRecognizer(inference.RecognizerConfig{
 			ModelPath: recPath,
-			GPU:       cfg.GPU,
+			Provider: inference.ProviderConfig{
+				Preferred:     getProviderType(cfg.GPU),
+				ForceCPU:      cfg.ForceCPU,
+				DeviceID:      cfg.GPUDeviceID,
+				AllowFallback: true,
+			},
 		})
 		if err != nil {
 			closeResources()
@@ -258,12 +269,18 @@ func processImage(
 		}
 
 		faces[i] = model.Face{
-			BBox:      [4]float64{float64(d.X1), float64(d.Y1), float64(d.X2), float64(d.Y2)},
-			Keypoints: keypoints,
-			Embedding: embeddings[i],
-			DetScore:  float64(d.Score),
-			Thumbnail: thumb,
-			FilePath:  imagePath,
+			BBox: model.BBox{
+				X1: float32(d.X1),
+				Y1: float32(d.Y1),
+				X2: float32(d.X2),
+				Y2: float32(d.Y2),
+			},
+			Keypoints:    keypoints,
+			Embedding:    embeddings[i],
+			DetScore:     float32(d.Score),
+			Thumbnail:    thumb,
+			FilePath:     imagePath,
+			ThumbnailPath: thumb,
 		}
 	}
 
@@ -492,4 +509,11 @@ func shortPathHash(path string) string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(path))
 	return fmt.Sprintf("%016x", h.Sum64())[:10]
+}
+
+func getProviderType(gpu bool) provider.ProviderType {
+	if gpu {
+		return provider.ProviderCUDA
+	}
+	return provider.ProviderCPU
 }
