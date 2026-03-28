@@ -9,6 +9,62 @@ version: '3.8'
 
 services:
   # -------------------------------------------------------------------------
+  # PostgreSQL Database with pgvector
+  # -------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: face-grouper-postgres
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_DB: face-grouper
+      POSTGRES_USER: face-grouper
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    
+    ports:
+      - "5432:5432"
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U face-grouper -d face-grouper"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    
+    networks:
+      - face-grouper-network
+
+  # -------------------------------------------------------------------------
+  # Redis Cache (optional)
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: face-grouper-redis
+    restart: unless-stopped
+    
+    command: redis-server --appendonly yes
+    
+    volumes:
+      - redis_data:/data
+    
+    ports:
+      - "6379:6379"
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - face-grouper-network
+
+  # -------------------------------------------------------------------------
   # CPU Version
   # -------------------------------------------------------------------------
   face-grouper-cpu:
@@ -21,21 +77,35 @@ services:
     container_name: face-grouper-cpu
     restart: unless-stopped
     
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
     # Port mapping
     ports:
       - "8080:8080"
     
     # Volume mounts
     volumes:
-      - ./dataset:/app/dataset:ro
-      - ./output:/app/output
-      - ./models:/app/models:ro
+      - ../../dataset:/app/dataset:ro
+      - ../../output:/app/output
+      - ../../models:/app/models:ro
     
     # Environment variables
     environment:
       - INPUT_DIR=/app/dataset
       - OUTPUT_DIR=/app/output
       - MODELS_DIR=/app/models
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=face-grouper
+      - DB_USER=face-grouper
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - GPU_ENABLED=0
       - FORCE_CPU=1
       - PROVIDER_PRIORITY=cpu
@@ -44,6 +114,9 @@ services:
       - LOG_JSON=false
       - WEB_SERVE=true
       - WEB_PORT=8080
+    
+    networks:
+      - face-grouper-network
     
     # Resource limits (CPU)
     deploy:
@@ -250,3 +323,19 @@ services:
 # Scale (not recommended for this app):
 #   docker-compose up -d --scale face-grouper-cpu=2
 # =============================================================================
+
+# -------------------------------------------------------------------------
+# Networks
+# -------------------------------------------------------------------------
+networks:
+  face-grouper-network:
+    driver: bridge
+
+# -------------------------------------------------------------------------
+# Volumes
+# -------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
