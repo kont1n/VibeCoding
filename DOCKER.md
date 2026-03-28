@@ -22,8 +22,9 @@ Complete guide for deploying Face Grouper using Docker.
 |----------|---------|---------|
 | Docker | 20.10+ | Container runtime |
 | Docker Compose | 2.0+ | Multi-container orchestration |
-| NVIDIA Driver | 450.80.02+ | GPU support (optional) |
-| NVIDIA Container Toolkit | 1.9+ | GPU in Docker (optional) |
+| NVIDIA Driver | 450.80.02+ | NVIDIA GPU support (optional) |
+| NVIDIA Container Toolkit | 1.9+ | NVIDIA GPU in Docker (optional) |
+| AMD ROCm | 5.4+ | AMD GPU support (optional) |
 
 ### NVIDIA GPU Setup (Optional)
 
@@ -43,6 +44,39 @@ sudo systemctl restart docker
 # Verify installation
 docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi
 ```
+
+### AMD ROCm Setup (Optional)
+
+For AMD GPU acceleration, install **ROCm** and configure Docker:
+
+```bash
+# Ubuntu/Debian - Install ROCm
+sudo apt update
+sudo apt install -y rocm-dkms rocm-opencl-runtime rocm-ml-sdk
+
+# Add user to video and render groups
+sudo usermod -a -G video $USER
+sudo usermod -a -G render $USER
+
+# Logout and login for group changes to take effect
+
+# Verify ROCm installation
+rocm-smi
+rocminfo
+
+# Docker should automatically have access to /dev/kfd and /dev/dri
+# Test with:
+docker run --device /dev/kfd --device /dev/dri --group-add video \
+  rocm/pytorch:rocm6.0-ubuntu22.04 rocminfo
+```
+
+**Supported AMD GPUs:**
+- RX 5000 series (Navi 10)
+- RX 6000 series (Navi 20)
+- RX 7000 series (Navi 30)
+- MI50, MI100, MI200, MI300 (Datacenter)
+
+For full compatibility list, see: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html
 
 ---
 
@@ -70,8 +104,11 @@ mkdir -p dataset output models
 # CPU version
 docker-compose up -d face-grouper-cpu
 
-# GPU version (requires NVIDIA GPU)
+# NVIDIA GPU version (requires NVIDIA GPU)
 docker-compose up -d face-grouper-gpu
+
+# AMD ROCm version (requires AMD GPU)
+docker-compose up -d face-grouper-rocm
 
 # View logs
 docker-compose logs -f
@@ -82,7 +119,10 @@ docker-compose down
 
 ### 3. Access Web UI
 
-Open browser: http://localhost:8080 (CPU) or http://localhost:8081 (GPU)
+Open browser:
+- CPU: http://localhost:8080
+- NVIDIA GPU: http://localhost:8081
+- AMD ROCm: http://localhost:8082
 
 ---
 
@@ -94,10 +134,16 @@ Open browser: http://localhost:8080 (CPU) or http://localhost:8081 (GPU)
 docker build -t face-grouper:cpu -f Dockerfile .
 ```
 
-### Build GPU Image
+### Build GPU Image (NVIDIA)
 
 ```bash
 docker build -t face-grouper:gpu -f Dockerfile.nvidia .
+```
+
+### Build GPU Image (AMD ROCm)
+
+```bash
+docker build -t face-grouper:rocm -f Dockerfile.rocm .
 ```
 
 ### Build with Custom ONNX Runtime Version
@@ -136,7 +182,7 @@ docker run -d \
   face-grouper:cpu
 ```
 
-#### GPU Version
+#### GPU Version (NVIDIA)
 
 ```bash
 docker run -d \
@@ -149,6 +195,25 @@ docker run -d \
   -e GPU_ENABLED=1 \
   -e GPU_DEVICE_ID=0 \
   face-grouper:gpu
+```
+
+#### GPU Version (AMD ROCm)
+
+```bash
+docker run -d \
+  --name face-grouper-rocm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --group-add video \
+  --group-add render \
+  -v $(pwd)/dataset:/app/dataset:ro \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/app/models:ro \
+  -p 8082:8080 \
+  -e GPU_ENABLED=1 \
+  -e GPU_DEVICE_ID=0 \
+  -e PROVIDER_PRIORITY=rocm \
+  face-grouper:rocm
 ```
 
 ### Using Docker Compose
@@ -253,18 +318,61 @@ watch -n 1 nvidia-smi
 docker exec face-grouper-gpu nvidia-smi
 ```
 
-### AMD ROCm (Coming Soon)
+### AMD ROCm
 
-ROCm support requires:
-- AMD GPU with GCN 4.0+
-- ROCm 5.0+
-- Docker with ROCm support
+**Requirements:**
+- AMD GPU with GCN 4.0+ (RDNA2/CDNA2+ recommended)
+- ROCm 5.4+ (6.0 recommended)
+- Docker with device access (/dev/kfd, /dev/dri)
+
+**Supported GPUs:**
+- RX 5000 series (Navi 10)
+- RX 6000 series (Navi 20)
+- RX 7000 series (Navi 30)
+- MI50, MI100, MI200, MI300 (Datacenter)
+
+**Run with specific GPU:**
 
 ```bash
-# Future implementation
-docker run -d --device /dev/kfd --device /dev/dri face-grouper:rocm
+# Use GPU 0
+docker run -d --device /dev/kfd --device /dev/dri --group-add video \
+  -e HIP_VISIBLE_DEVICES=0 \
+  face-grouper:rocm
+
+# Use GPU 1
+docker run -d --device /dev/kfd --device /dev/dri --group-add video \
+  -e HIP_VISIBLE_DEVICES=1 \
+  face-grouper:rocm
 ```
 
+**Monitor GPU usage:**
+
+```bash
+# On host
+watch -n 1 rocm-smi
+rocminfo
+
+# In container
+docker exec face-grouper-rocm rocminfo
+```
+
+**Troubleshooting ROCm:**
+
+```bash
+# Check ROCm installation
+rocm-smi
+rocminfo
+
+# Check user groups
+groups $USER  # Should include 'video' and 'render'
+
+# Check device access
+ls -la /dev/kfd /dev/dri
+
+# Test Docker ROCm access
+docker run --device /dev/kfd --device /dev/dri --group-add video \
+  rocm/pytorch:rocm6.0-ubuntu22.04 rocminfo
+```
 ---
 
 ## Troubleshooting

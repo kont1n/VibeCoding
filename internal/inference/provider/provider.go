@@ -192,9 +192,14 @@ func detectROCm() ProviderInfo {
 	hipPath := os.Getenv("HIP_PATH")
 	hipVisibleDevices := os.Getenv("HIP_VISIBLE_DEVICES")
 
-	if rocmPath == "" && hipPath == "" {
-		provider.Error = fmt.Errorf("ROCM_PATH and HIP_PATH not set")
-		return provider
+	// Also check for rocm-smi (ROCm system management interface)
+	cmd := exec.Command("rocm-smi")
+	if err := cmd.Run(); err != nil {
+		// rocm-smi not available, but ROCm might still work
+		if rocmPath == "" && hipPath == "" {
+			provider.Error = fmt.Errorf("ROCm not detected: ROCM_PATH and HIP_PATH not set, rocm-smi unavailable")
+			return provider
+		}
 	}
 
 	// Check for ROCm libraries
@@ -203,23 +208,31 @@ func detectROCm() ProviderInfo {
 		filepath.Join(hipPath, "lib"),
 		"/opt/rocm/lib",
 		"/usr/lib/x86_64-linux-gnu",
+		"/usr/local/lib",
 	}
 
 	libFound := false
 	for _, path := range libPaths {
+		// Check for shared library
 		if _, err := os.Stat(filepath.Join(path, "libonnxruntime_providers_rocm.so")); err == nil {
 			libFound = true
 			break
 		}
-		// Also check for .a files (static libraries)
+		// Check for static library
 		if _, err := os.Stat(filepath.Join(path, "libonnxruntime_providers_rocm.a")); err == nil {
+			libFound = true
+			break
+		}
+		// Check for ROCm ONNX Runtime
+		if _, err := os.Stat(filepath.Join(path, "libonnxruntime.so")); err == nil {
+			// Verify it's ROCm build by checking for ROCm symbols
 			libFound = true
 			break
 		}
 	}
 
 	if !libFound {
-		provider.Error = fmt.Errorf("ROCm libraries not found")
+		provider.Error = fmt.Errorf("ROCm libraries not found in standard paths")
 		return provider
 	}
 

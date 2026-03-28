@@ -156,12 +156,40 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 		}
 
 	case provider.ProviderROCm:
-		// ROCm support depends on onnxruntime_go version
-		// For now, fallback to CPU
-		if !cfg.AllowFallback {
-			return nil, fmt.Errorf("ROCm provider not available in this build")
+		// Check if ROCm provider is available in this build
+		// Note: ROCm support requires onnxruntime_go with ROCm bindings
+		rocmOpts, err := ort.NewROCmProviderOptions()
+		if err != nil {
+			// ROCm not available in this build, fallback to CPU if allowed
+			if cfg.AllowFallback {
+				// Continue without GPU - will use CPU
+				// Log warning (will be handled by caller)
+			} else {
+				opts.Destroy()
+				return nil, fmt.Errorf("ROCm provider not available in this build: %w", err)
+			}
+		} else {
+			// Configure ROCm provider
+			if err := rocmOpts.Update(map[string]string{
+				"device_id": strconv.Itoa(cfg.DeviceID),
+			}); err != nil {
+				rocmOpts.Destroy()
+				opts.Destroy()
+				return nil, fmt.Errorf("configure ROCm provider options: %w", err)
+			}
+			if err := opts.AppendExecutionProviderROCm(rocmOpts); err != nil {
+				if cfg.AllowFallback {
+					rocmOpts.Destroy()
+					// Continue without GPU
+				} else {
+					rocmOpts.Destroy()
+					opts.Destroy()
+					return nil, fmt.Errorf("append ROCm provider: %w", err)
+				}
+			} else {
+				rocmOpts.Destroy()
+			}
 		}
-		// Continue with CPU fallback
 
 	case provider.ProviderDirectML:
 		// DirectML support depends on onnxruntime_go version

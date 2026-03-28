@@ -73,6 +73,84 @@ services:
     # command: ["--serve", "--port", "8080"]
   
   # -------------------------------------------------------------------------
+  # GPU Version (AMD ROCm)
+  # -------------------------------------------------------------------------
+  face-grouper-rocm:
+    build:
+      context: .
+      dockerfile: Dockerfile.rocm
+      args:
+        ONNXRUNTIME_VERSION: "1.23.0"
+    image: face-grouper:rocm
+    container_name: face-grouper-rocm
+    restart: unless-stopped
+    
+    # Port mapping
+    ports:
+      - "8082:8080"
+    
+    # Volume mounts
+    volumes:
+      - ./dataset:/app/dataset:ro
+      - ./output:/app/output
+      - ./models:/app/models:ro
+    
+    # Device access for ROCm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    
+    # Group access for GPU
+    group_add:
+      - video
+      - render
+    
+    # Environment variables
+    environment:
+      - INPUT_DIR=/app/dataset
+      - OUTPUT_DIR=/app/output
+      - MODELS_DIR=/app/models
+      - GPU_ENABLED=1
+      - GPU_DEVICE_ID=0
+      - PROVIDER_PRIORITY=rocm
+      - HIP_VISIBLE_DEVICES=0
+      - ROCR_VISIBLE_DEVICES=0
+      - EXTRACT_WORKERS=4
+      - GPUDet_SESSIONS=2
+      - GPU_REC_SESSIONS=2
+      - EMBED_BATCH_SIZE=64
+      - LOG_LEVEL=info
+      - LOG_JSON=false
+      - WEB_SERVE=true
+      - WEB_PORT=8080
+    
+    # Resource limits
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: amdgpu
+              count: 1
+              capabilities: [gpu]
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Command override (optional)
+    # command: ["--serve", "--port", "8080"]
+  # -------------------------------------------------------------------------
   # GPU Version (NVIDIA)
   # -------------------------------------------------------------------------
   face-grouper-gpu:
@@ -145,15 +223,19 @@ services:
 # Start CPU version:
 #   docker-compose up -d face-grouper-cpu
 #
-# Start GPU version:
+# Start NVIDIA GPU version:
 #   docker-compose up -d face-grouper-gpu
 #
-# Start both:
+# Start AMD ROCm version:
+#   docker-compose up -d face-grouper-rocm
+#
+# Start all:
 #   docker-compose up -d
 #
 # View logs:
 #   docker-compose logs -f face-grouper-cpu
 #   docker-compose logs -f face-grouper-gpu
+#   docker-compose logs -f face-grouper-rocm
 #
 # Stop:
 #   docker-compose down
