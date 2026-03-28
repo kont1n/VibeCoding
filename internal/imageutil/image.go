@@ -217,15 +217,37 @@ func Crop(img *Image, x, y, width, height int) *Image {
 }
 
 // WarpAffine applies an affine transformation to the image.
-// M is a 2x3 transformation matrix.
+// M is a 2x3 transformation matrix (src -> dst). We compute inverse (dst -> src).
 func WarpAffine(img *Image, M [2][3]float64, width, height int) *Image {
 	result := NewImage(width, height)
+
+	// Compute inverse of the 2x3 affine matrix
+	// M = [a b tx; c d ty] represents: dst.x = a*src.x + b*src.y + tx
+	// We need inverse: src.x = a'*dst.x + b'*dst.y + tx'
+	a, b, tx := M[0][0], M[0][1], M[0][2]
+	c, d, ty := M[1][0], M[1][1], M[1][2]
+
+	// Compute determinant of 2x2 linear part
+	det := a*d - b*c
+	if det == 0 {
+		det = 1e-10 // Avoid division by zero
+	}
+
+	// Inverse of 2x2 matrix: [a b; c d]^-1 = 1/det * [d -b; -c a]
+	// For affine transform with translation:
+	invDet := 1.0 / det
+	invA := d * invDet
+	invB := -b * invDet
+	invTx := -(d*tx - b*ty) * invDet
+	invC := -c * invDet
+	invD := a * invDet
+	invTy := -(-c*tx + a*ty) * invDet
 
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			// Apply inverse transform to find source coordinates
-			srcX := M[0][0]*float64(x) + M[0][1]*float64(y) + M[0][2]
-			srcY := M[1][0]*float64(x) + M[1][1]*float64(y) + M[1][2]
+			srcX := invA*float64(x) + invB*float64(y) + invTx
+			srcY := invC*float64(x) + invD*float64(y) + invTy
 
 			// Bilinear interpolation
 			x0 := int(math.Floor(srcX))

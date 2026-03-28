@@ -97,7 +97,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	var ortLibPath string
 	if config.AppConfig.Extract.GPU {
 		// Используем GPU версию DLL
-		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.24.4/onnxruntime-win-x64-gpu-1.24.4/lib/onnxruntime.dll"
+		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
 	if err := inferenceRepo.InitORT(ortLibPath); err != nil {
 		return fmt.Errorf("ONNX Runtime init: %w", err)
