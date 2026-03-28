@@ -9,7 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kont1n/face-grouper/internal/config/env"
-	"github.com/kont1n/face-grouper/internal/repository/postgres"
+	dbpostgres "github.com/kont1n/face-grouper/internal/database/postgres"
+	repopostgres "github.com/kont1n/face-grouper/internal/repository/postgres"
 )
 
 // DB holds database connections and repositories.
@@ -17,17 +18,17 @@ type DB struct {
 	Pool *pgxpool.Pool
 
 	// Repositories
-	Persons   *postgres.PersonRepository
-	Faces     *postgres.FaceRepository
-	Photos    *postgres.PhotoRepository
-	Relations *postgres.RelationRepository
-	Sessions  *postgres.SessionRepository
+	Persons   *repopostgres.PersonRepository
+	Faces     *repopostgres.FaceRepository
+	Photos    *repopostgres.PhotoRepository
+	Relations *repopostgres.RelationRepository
+	Sessions  *repopostgres.SessionRepository
 }
 
 // New creates a new database connection and initializes repositories.
 func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 	// Create connection pool
-	pool, err := postgres.NewPool(ctx, postgres.Config{
+	pool, err := dbpostgres.NewPool(ctx, dbpostgres.Config{
 		Host:              cfg.Host,
 		Port:              cfg.Port,
 		Database:          cfg.Database,
@@ -46,7 +47,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 
 	// Run migrations if enabled
 	if cfg.RunMigrations {
-		migrator := NewMigrator(pool)
+		migrator := Migrator{pool: pool}
 		if err := migrator.Migrate(ctx); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("run migrations: %w", err)
@@ -56,11 +57,11 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 	// Create repositories
 	db := &DB{
 		Pool:      pool,
-		Persons:   postgres.NewPersonRepository(pool),
-		Faces:     postgres.NewFaceRepository(pool),
-		Photos:    postgres.NewPhotoRepository(pool),
-		Relations: postgres.NewRelationRepository(pool),
-		Sessions:  postgres.NewSessionRepository(pool),
+		Persons:   repopostgres.NewPersonRepository(pool),
+		Faces:     repopostgres.NewFaceRepository(pool),
+		Photos:    repopostgres.NewPhotoRepository(pool),
+		Relations: repopostgres.NewRelationRepository(pool),
+		Sessions:  repopostgres.NewSessionRepository(pool),
 	}
 
 	return db, nil
@@ -74,6 +75,6 @@ func (d *DB) Close() {
 }
 
 // Health returns database health status.
-func (d *DB) Health(ctx context.Context) (*postgres.HealthStatus, error) {
-	return postgres.CheckHealth(ctx, d.Pool)
+func (d *DB) Health(ctx context.Context) (*dbpostgres.HealthStatus, error) {
+	return dbpostgres.CheckHealth(ctx, d.Pool)
 }

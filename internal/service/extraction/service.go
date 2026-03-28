@@ -233,12 +233,18 @@ func (s *extractionService) processImage(
 		}
 
 		faces[i] = model.Face{
-			BBox:      [4]float64{float64(d.X1), float64(d.Y1), float64(d.X2), float64(d.Y2)},
-			Keypoints: keypoints,
-			Embedding: embeddings[i],
-			DetScore:  float64(d.Score),
-			Thumbnail: thumb,
-			FilePath:  imagePath,
+			BBox: model.BBox{
+				X1: float32(d.X1),
+				Y1: float32(d.Y1),
+				X2: float32(d.X2),
+				Y2: float32(d.Y2),
+			},
+			Keypoints:    keypoints,
+			Embedding:    embeddings[i],
+			DetScore:     float32(d.Score),
+			Thumbnail:    thumb,
+			FilePath:     imagePath,
+			ThumbnailPath: thumb,
 		}
 	}
 

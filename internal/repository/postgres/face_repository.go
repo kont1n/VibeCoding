@@ -1,11 +1,9 @@
-package postgres
+﻿package postgres
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,7 +30,12 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 	`
 
-	embedding := pgvector.NewVector(float32SliceToFloat64Slice(face.Embedding))
+	// Convert []float64 to []float32 for pgvector
+	embedding32 := make([]float32, len(face.Embedding))
+	for i, v := range face.Embedding {
+		embedding32[i] = float32(v)
+	}
+	embedding := pgvector.NewVector(embedding32)
 
 	_, err := r.pool.Exec(ctx, query,
 		face.ID,
@@ -84,8 +87,10 @@ func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face
 		return nil, err
 	}
 
-	face.Embedding = make([]float64, len(embeddingVec))
-	for i, v := range embeddingVec {
+	// Convert pgvector.Vector ([]float32) to []float64
+	vecSlice := embeddingVec.Slice()
+	face.Embedding = make([]float64, len(vecSlice))
+	for i, v := range vecSlice {
 		face.Embedding[i] = float64(v)
 	}
 
@@ -129,8 +134,8 @@ func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) 
 			return nil, err
 		}
 
-		face.Embedding = make([]float64, len(embeddingVec))
-		for i, v := range embeddingVec {
+		face.Embedding = make([]float64, len(embeddingVec.Slice()))
+		for i, v := range embeddingVec.Slice() {
 			face.Embedding[i] = float64(v)
 		}
 
@@ -177,8 +182,8 @@ func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([
 			return nil, err
 		}
 
-		face.Embedding = make([]float64, len(embeddingVec))
-		for i, v := range embeddingVec {
+		face.Embedding = make([]float64, len(embeddingVec.Slice()))
+		for i, v := range embeddingVec.Slice() {
 			face.Embedding[i] = float64(v)
 		}
 

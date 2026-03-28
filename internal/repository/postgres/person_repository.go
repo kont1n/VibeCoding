@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -330,8 +329,8 @@ func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []flo
 		}
 
 		// Copy embedding data
-		face.Face.Embedding = make([]float64, len(embeddingVec))
-		for i, v := range embeddingVec {
+		face.Face.Embedding = make([]float64, len(embeddingVec.Slice()))
+		for i, v := range embeddingVec.Slice() {
 			face.Face.Embedding[i] = float64(v)
 		}
 

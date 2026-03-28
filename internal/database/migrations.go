@@ -30,18 +30,11 @@ func NewMigrator(pool *pgxpool.Pool) *Migrator {
 
 // Migrate runs all pending migrations.
 func (m *Migrator) Migrate(ctx context.Context) error {
-	// Get database connection
-	conn, err := m.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire connection: %w", err)
-	}
-	defer conn.Release()
-
+	// Use pool's underlying database connection
+	db := m.pool.Pool()
+	
 	// Create database driver
-	dbDriver, err := postgres.WithInstance(
-		conn.Conn().NativeConn(),
-		&postgres.Config{},
-	)
+	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("create db driver: %w", err)
 	}
@@ -69,7 +62,6 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 	}
 
 	if err == migrate.ErrNoChange {
-		// No new migrations to apply
 		return nil
 	}
 
@@ -78,16 +70,9 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 // MigrateTo migrates to a specific version.
 func (m *Migrator) MigrateTo(ctx context.Context, version uint) error {
-	conn, err := m.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire connection: %w", err)
-	}
-	defer conn.Release()
+	db := m.pool.Pool()
 
-	dbDriver, err := postgres.WithInstance(
-		conn.Conn().NativeConn(),
-		&postgres.Config{},
-	)
+	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("create db driver: %w", err)
 	}
@@ -111,16 +96,9 @@ func (m *Migrator) MigrateTo(ctx context.Context, version uint) error {
 
 // GetVersion returns the current database schema version.
 func (m *Migrator) GetVersion(ctx context.Context) (uint, bool, error) {
-	conn, err := m.pool.Acquire(ctx)
-	if err != nil {
-		return 0, false, fmt.Errorf("acquire connection: %w", err)
-	}
-	defer conn.Release()
+	db := m.pool.Pool()
 
-	dbDriver, err := postgres.WithInstance(
-		conn.Conn().NativeConn(),
-		&postgres.Config{},
-	)
+	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return 0, false, fmt.Errorf("create db driver: %w", err)
 	}
@@ -140,16 +118,9 @@ func (m *Migrator) GetVersion(ctx context.Context) (uint, bool, error) {
 
 // Rollback rolls back the last migration.
 func (m *Migrator) Rollback(ctx context.Context) error {
-	conn, err := m.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire connection: %w", err)
-	}
-	defer conn.Release()
+	db := m.pool.Pool()
 
-	dbDriver, err := postgres.WithInstance(
-		conn.Conn().NativeConn(),
-		&postgres.Config{},
-	)
+	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("create db driver: %w", err)
 	}

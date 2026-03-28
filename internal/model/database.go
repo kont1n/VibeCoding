@@ -24,15 +24,18 @@ type Person struct {
 
 // Face represents a detected face.
 type Face struct {
-	ID              uuid.UUID `json:"id"`
-	PersonID        uuid.UUID `json:"person_id"`
-	PhotoID         uuid.UUID `json:"photo_id"`
-	Embedding       []float64 `json:"embedding"`
-	BBox            BBox      `json:"bbox"`
-	DetScore        float32   `json:"det_score"`
-	QualityScore    float32   `json:"quality_score"`
-	ThumbnailPath   string    `json:"thumbnail_path"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	PersonID     uuid.UUID `json:"person_id"`
+	PhotoID      uuid.UUID `json:"photo_id"`
+	Embedding    []float64 `json:"embedding"`
+	BBox         BBox      `json:"bbox"`
+	Keypoints    [5][2]float64 `json:"keypoints"`
+	DetScore     float32   `json:"det_score"`
+	QualityScore float32   `json:"quality_score"`
+	Thumbnail    string    `json:"thumbnail"`
+	FilePath     string    `json:"file_path"`
+	ThumbnailPath string   `json:"thumbnail_path"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // BBox represents a bounding box.
@@ -41,6 +44,11 @@ type BBox struct {
 	Y1 float32 `json:"y1"`
 	X2 float32 `json:"x2"`
 	Y2 float32 `json:"y2"`
+}
+
+// Array возвращает BBox как массив для совместимости.
+func (b BBox) Array() [4]float64 {
+	return [4]float64{float64(b.X1), float64(b.Y1), float64(b.X2), float64(b.Y2)}
 }
 
 // Photo represents a processed photo.

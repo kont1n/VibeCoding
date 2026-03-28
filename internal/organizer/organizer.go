@@ -188,10 +188,10 @@ func scoreFace(face model.Face) float64 {
 	}
 
 	box := avatar.Box{
-		X1: face.BBox[0],
-		Y1: face.BBox[1],
-		X2: face.BBox[2],
-		Y2: face.BBox[3],
+		X1: float64(face.BBox.X1),
+		Y1: float64(face.BBox.Y1),
+		X2: float64(face.BBox.X2),
+		Y2: float64(face.BBox.Y2),
 	}
 
 	frontalFactor := 1.0
