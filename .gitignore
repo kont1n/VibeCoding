@@ -10,3 +10,6 @@ runtime/
 *.dll
 *.so
 *.dylib
+.env
+.cursor/
+.qwen/

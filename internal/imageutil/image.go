@@ -165,13 +165,13 @@ func BlobFromImage(img *Image, mean, std float32, swapRGB bool) ([]float32, erro
 
 			if swapRGB {
 				// RGB order (NCHW)
-				blob[dstIdx] = (r - mean) * invStd     // R channel
-				blob[dstIdx+size] = (g - mean) * invStd // G channel
+				blob[dstIdx] = (r - mean) * invStd        // R channel
+				blob[dstIdx+size] = (g - mean) * invStd   // G channel
 				blob[dstIdx+size*2] = (b - mean) * invStd // B channel
 			} else {
 				// BGR order (NCHW)
-				blob[dstIdx] = (b - mean) * invStd     // B channel
-				blob[dstIdx+size] = (g - mean) * invStd // G channel
+				blob[dstIdx] = (b - mean) * invStd        // B channel
+				blob[dstIdx+size] = (g - mean) * invStd   // G channel
 				blob[dstIdx+size*2] = (r - mean) * invStd // R channel
 			}
 		}

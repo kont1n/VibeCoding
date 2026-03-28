@@ -6,13 +6,13 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/kont1n/face-grouper/internal/models"
+	"github.com/kont1n/face-grouper/internal/model"
 )
 
 func TestClusterGroupsSimilarFaces(t *testing.T) {
 	t.Parallel()
 
-	faces := []models.Face{
+	faces := []model.Face{
 		{Embedding: []float64{1.0, 0.0, 0.0}},
 		{Embedding: []float64{0.99, 0.01, 0.0}},
 		{Embedding: []float64{-1.0, 0.0, 0.0}},
@@ -38,7 +38,7 @@ func TestClusterAppliesTransitiveMerging(t *testing.T) {
 	t.Parallel()
 
 	// A~B and B~C above threshold, A~C below threshold.
-	faces := []models.Face{
+	faces := []model.Face{
 		{Embedding: []float64{1.0, 0.0}},
 		{Embedding: []float64{0.8, 0.6}},
 		{Embedding: []float64{0.28, 0.96}},
@@ -64,7 +64,7 @@ func TestClusterHandlesEmptyInput(t *testing.T) {
 func TestClusterHandlesZeroDimensionEmbeddings(t *testing.T) {
 	t.Parallel()
 
-	faces := []models.Face{{Embedding: nil}, {Embedding: nil}}
+	faces := []model.Face{{Embedding: nil}, {Embedding: nil}}
 	if got := Cluster(faces, 0.5); got != nil {
 		t.Fatalf("expected nil for zero-dimension embeddings, got %v", got)
 	}
@@ -78,9 +78,9 @@ func BenchmarkCluster512D(b *testing.B) {
 	}
 }
 
-func makeRandomFaces(n, dim int) []models.Face {
+func makeRandomFaces(n, dim int) []model.Face {
 	r := rand.New(rand.NewSource(42))
-	faces := make([]models.Face, n)
+	faces := make([]model.Face, n)
 	for i := 0; i < n; i++ {
 		emb := make([]float64, dim)
 		var norm float64
@@ -96,7 +96,7 @@ func makeRandomFaces(n, dim int) []models.Face {
 		for j := 0; j < dim; j++ {
 			emb[j] /= norm
 		}
-		faces[i] = models.Face{Embedding: emb}
+		faces[i] = model.Face{Embedding: emb}
 	}
 	return faces
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	ort "github.com/yalue/onnxruntime_go"
 	"github.com/kont1n/face-grouper/internal/imageutil"
+	ort "github.com/yalue/onnxruntime_go"
 )
 
 // Detector wraps an SCRFD ONNX model for face detection.

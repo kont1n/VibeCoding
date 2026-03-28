@@ -5,8 +5,8 @@ import "sort"
 // Detection holds a single face detection before NMS.
 type Detection struct {
 	X1, Y1, X2, Y2 float32
-	Score           float32
-	Kps             [5][2]float32
+	Score          float32
+	Kps            [5][2]float32
 }
 
 // NMS performs greedy Non-Maximum Suppression on detections sorted by score.

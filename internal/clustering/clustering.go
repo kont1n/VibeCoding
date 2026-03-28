@@ -3,7 +3,7 @@ package clustering
 import (
 	"sync"
 
-	"github.com/kont1n/face-grouper/internal/models"
+	"github.com/kont1n/face-grouper/internal/model"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -51,7 +51,7 @@ const blockSize = 512
 
 // Cluster groups faces using BLAS-accelerated matrix multiplication for similarity.
 // Embeddings are already L2-normalized by the recognizer, so dot product = cosine similarity.
-func Cluster(faces []models.Face, threshold float64) []models.Cluster {
+func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 	n := len(faces)
 	if n == 0 {
 		return nil
@@ -133,14 +133,14 @@ func Cluster(faces []models.Face, threshold float64) []models.Cluster {
 		groups[root] = append(groups[root], i)
 	}
 
-	clusters := make([]models.Cluster, 0, len(groups))
+	clusters := make([]model.Cluster, 0, len(groups))
 	id := 1
 	for _, indices := range groups {
-		clusterFaces := make([]models.Face, len(indices))
+		clusterFaces := make([]model.Face, len(indices))
 		for k, idx := range indices {
 			clusterFaces[k] = faces[idx]
 		}
-		clusters = append(clusters, models.Cluster{
+		clusters = append(clusters, model.Cluster{
 			ID:    id,
 			Faces: clusterFaces,
 		})

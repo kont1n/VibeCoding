@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/kont1n/face-grouper/internal/avatar"
-	"github.com/kont1n/face-grouper/internal/models"
+	"github.com/kont1n/face-grouper/internal/model"
 	"github.com/kont1n/face-grouper/internal/report"
 )
 
@@ -35,7 +35,7 @@ type previousAvatar struct {
 
 // Organize creates Person_N directories under outputDir, symlinks photos, and picks
 // the best face thumbnail per person. Returns metadata for each person cluster.
-func Organize(clusters []models.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
+func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
 	if avatarUpdateThreshold < 0 {
 		avatarUpdateThreshold = 0
 	}
@@ -172,7 +172,7 @@ func Organize(clusters []models.Cluster, outputDir string, avatarUpdateThreshold
 	return persons, nil
 }
 
-func scoreFace(face models.Face) float64 {
+func scoreFace(face model.Face) float64 {
 	if face.Thumbnail == "" {
 		return 0
 	}

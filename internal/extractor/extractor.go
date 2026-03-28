@@ -12,7 +12,7 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/imageutil"
 	"github.com/kont1n/face-grouper/internal/inference"
-	"github.com/kont1n/face-grouper/internal/models"
+	"github.com/kont1n/face-grouper/internal/model"
 )
 
 // Config holds extractor settings.
@@ -32,7 +32,7 @@ type Config struct {
 
 // Result aggregates extraction output and error statistics.
 type Result struct {
-	Faces      []models.Face
+	Faces      []model.Face
 	ErrorCount int
 	FileErrors map[string]string
 }
@@ -54,7 +54,7 @@ func Extract(files []string, cfg Config, w io.Writer) (*Result, error) {
 
 	type fileResult struct {
 		path  string
-		faces []models.Face
+		faces []model.Face
 		err   error
 	}
 
@@ -193,7 +193,7 @@ func processImage(
 	recBatcher *recognizerBatcher,
 	recSize int,
 	cfg Config,
-) ([]models.Face, error) {
+) ([]model.Face, error) {
 	img, err := imageutil.LoadImage(imagePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read image: %s: %w", imagePath, err)
@@ -244,7 +244,7 @@ func processImage(
 		return nil, fmt.Errorf("recognition: %w", err)
 	}
 
-	faces := make([]models.Face, len(dets))
+	faces := make([]model.Face, len(dets))
 	for i, d := range dets {
 		thumb := ""
 		if cfg.ThumbDir != "" {
@@ -257,7 +257,7 @@ func processImage(
 			keypoints[k][1] = float64(d.Kps[k][1])
 		}
 
-		faces[i] = models.Face{
+		faces[i] = model.Face{
 			BBox:      [4]float64{float64(d.X1), float64(d.Y1), float64(d.X2), float64(d.Y2)},
 			Keypoints: keypoints,
 			Embedding: embeddings[i],
