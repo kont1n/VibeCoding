@@ -1,4 +1,4 @@
-// Package postgres provides PostgreSQL repository implementations.
+﻿// Package postgres provides PostgreSQL repository implementations.
 package postgres
 
 import (
@@ -306,7 +306,7 @@ func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []flo
 	var similarFaces []*model.SimilarFace
 	for rows.Next() {
 		var face model.SimilarFace
-		var embeddingVec pgvector-go.Vector
+		var embeddingVec pgvector.Vector
 
 		err := rows.Scan(
 			&face.Face.ID,

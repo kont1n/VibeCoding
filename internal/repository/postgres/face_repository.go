@@ -60,7 +60,7 @@ func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face
 	`
 
 	face := &model.Face{}
-	var embeddingVec pgvector-go.Vector
+	var embeddingVec pgvector.Vector
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&face.ID,
@@ -109,7 +109,7 @@ func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) 
 	var faces []*model.Face
 	for rows.Next() {
 		face := &model.Face{}
-		var embeddingVec pgvector-go.Vector
+		var embeddingVec pgvector.Vector
 
 		err := rows.Scan(
 			&face.ID,
@@ -157,7 +157,7 @@ func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([
 	var faces []*model.Face
 	for rows.Next() {
 		face := &model.Face{}
-		var embeddingVec pgvector-go.Vector
+		var embeddingVec pgvector.Vector
 
 		err := rows.Scan(
 			&face.ID,

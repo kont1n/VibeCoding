@@ -114,3 +114,9 @@ type SimilarFace struct {
 	PersonCustomName   string  `json:"person_custom_name"`
 	Similarity         float64 `json:"similarity"`
 }
+
+// Cluster represents a group of faces belonging to one person.
+type Cluster struct {
+	ID    int    `json:"id"`
+	Faces []Face `json:"faces"`
+}

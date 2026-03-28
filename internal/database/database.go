@@ -4,11 +4,12 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kont1n/face-grouper/internal/config/env"
-	"github.com/kont1n/face-grouper/internal/database/postgres"
+	"github.com/kont1n/face-grouper/internal/repository/postgres"
 )
 
 // DB holds database connections and repositories.
@@ -16,11 +17,11 @@ type DB struct {
 	Pool *pgxpool.Pool
 
 	// Repositories
-	Persons  *postgres.PersonRepository
-	Faces    *postgres.FaceRepository
-	Photos   *postgres.PhotoRepository
+	Persons   *postgres.PersonRepository
+	Faces     *postgres.FaceRepository
+	Photos    *postgres.PhotoRepository
 	Relations *postgres.RelationRepository
-	Sessions *postgres.SessionRepository
+	Sessions  *postgres.SessionRepository
 }
 
 // New creates a new database connection and initializes repositories.
@@ -35,9 +36,9 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 		SSLMode:           cfg.SSLMode,
 		MaxConns:          int32(cfg.MaxConns),
 		MinConns:          int32(cfg.MinConns),
-		MaxConnLifetime:   cfg.MaxConnLifetime,
-		MaxConnIdleTime:   cfg.MaxConnIdleTime,
-		HealthCheckPeriod: cfg.HealthCheckPeriod,
+		MaxConnLifetime:   time.Duration(cfg.MaxConnLifetime) * time.Second,
+		MaxConnIdleTime:   time.Duration(cfg.MaxConnIdleTime) * time.Second,
+		HealthCheckPeriod: time.Duration(cfg.HealthCheckPeriod) * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
@@ -54,12 +55,12 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 
 	// Create repositories
 	db := &DB{
-		Pool: pool,
-		Persons:  postgres.NewPersonRepository(pool),
-		Faces:    postgres.NewFaceRepository(pool),
-		Photos:   postgres.NewPhotoRepository(pool),
+		Pool:      pool,
+		Persons:   postgres.NewPersonRepository(pool),
+		Faces:     postgres.NewFaceRepository(pool),
+		Photos:    postgres.NewPhotoRepository(pool),
 		Relations: postgres.NewRelationRepository(pool),
-		Sessions: postgres.NewSessionRepository(pool),
+		Sessions:  postgres.NewSessionRepository(pool),
 	}
 
 	return db, nil
