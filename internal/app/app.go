@@ -10,10 +10,9 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/database"
-	"github.com/kont1n/face-grouper/internal/inference"
-	"github.com/kont1n/face-grouper/internal/inference/provider"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/report"
-	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
 	"github.com/kont1n/face-grouper/internal/service/organization"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
@@ -147,7 +146,7 @@ func (a *App) runProcess(ctx context.Context) error {
 		preferred = provider.ProviderCPU
 	}
 
-	providerCfg := inference.ProviderConfig{
+	providerCfg := ml.ProviderConfig{
 		Preferred:     preferred,
 		ForceCPU:      cfg.ForceCPU,
 		DeviceID:      cfg.GPUDeviceID,
@@ -162,13 +161,13 @@ func (a *App) runProcess(ctx context.Context) error {
 		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
 
-	if err := inferenceRepo.SelectAndInitializeProvider(providerCfg, ortLibPath); err != nil {
+	if err := ml.SelectAndInitializeProvider(providerCfg, ortLibPath); err != nil {
 		return fmt.Errorf("ONNX Runtime init: %w", err)
 	}
-	defer inferenceRepo.DestroyORT()
+	defer ml.DestroyORT()
 
 	// Log selected provider
-	selectedProvider := inferenceRepo.GetSelectedProvider()
+	selectedProvider := ml.GetSelectedProvider()
 	logger.Info(ctx, "ONNX Runtime provider initialized",
 		zap.String("provider", selectedProvider.Name),
 		zap.String("type", string(selectedProvider.Type)),

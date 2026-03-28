@@ -1,4 +1,4 @@
-package inference
+﻿package ml
 
 import (
 	"fmt"

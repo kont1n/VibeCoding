@@ -1,25 +1,24 @@
-package inference
+﻿package ml
 
 import (
 	"fmt"
 
 	"github.com/kont1n/face-grouper/internal/imageutil"
-	"github.com/kont1n/face-grouper/internal/inference"
 )
 
 // DetectorRepository определяет интерфейс для детекции лиц.
 type DetectorRepository interface {
-	Detect(img *imageutil.Image) ([]inference.Detection, error)
+	Detect(img *imageutil.Image) ([]Detection, error)
 	Close()
 }
 
 type detectorRepository struct {
-	detector *inference.Detector
+	detector *Detector
 }
 
 // NewDetectorRepository создаёт новый экземпляр репозитория детектора.
-func NewDetectorRepository(cfg inference.DetectorConfig) (DetectorRepository, error) {
-	det, err := inference.NewDetector(cfg)
+func NewDetectorRepository(cfg DetectorConfig) (DetectorRepository, error) {
+	det, err := NewDetector(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create detector: %w", err)
 	}
@@ -28,7 +27,7 @@ func NewDetectorRepository(cfg inference.DetectorConfig) (DetectorRepository, er
 }
 
 // Detect выполняет детекцию лиц на изображении.
-func (r *detectorRepository) Detect(img *imageutil.Image) ([]inference.Detection, error) {
+func (r *detectorRepository) Detect(img *imageutil.Image) ([]Detection, error) {
 	return r.detector.Detect(img)
 }
 
@@ -45,12 +44,12 @@ type RecognizerRepository interface {
 }
 
 type recognizerRepository struct {
-	recognizer *inference.Recognizer
+	recognizer *Recognizer
 }
 
 // NewRecognizerRepository создаёт новый экземпляр репозитория распознавания.
-func NewRecognizerRepository(cfg inference.RecognizerConfig) (RecognizerRepository, error) {
-	rec, err := inference.NewRecognizer(cfg)
+func NewRecognizerRepository(cfg RecognizerConfig) (RecognizerRepository, error) {
+	rec, err := NewRecognizer(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create recognizer: %w", err)
 	}
@@ -71,19 +70,4 @@ func (r *recognizerRepository) InputSize() int {
 // Close закрывает ресурсы распознавателя.
 func (r *recognizerRepository) Close() {
 	r.recognizer.Close()
-}
-
-// DestroyORT освобождаем ресурсы ONNX Runtime.
-func DestroyORT() {
-	inference.DestroyORT()
-}
-
-// SelectAndInitializeProvider выбирает и инициализирует провайдер ONNX Runtime.
-func SelectAndInitializeProvider(cfg inference.ProviderConfig, libPath string) error {
-	return inference.SelectAndInitializeProvider(cfg, libPath)
-}
-
-// GetSelectedProvider возвращает выбранный провайдер.
-func GetSelectedProvider() inference.ProviderInfo {
-	return inference.GetSelectedProvider()
 }

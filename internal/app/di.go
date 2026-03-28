@@ -8,10 +8,9 @@ import (
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/database"
-	"github.com/kont1n/face-grouper/internal/inference"
-	"github.com/kont1n/face-grouper/internal/inference/provider"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/repository/filesystem"
-	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
 	"github.com/kont1n/face-grouper/internal/repository/postgres"
 	"github.com/kont1n/face-grouper/internal/service/clustering"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
@@ -31,8 +30,8 @@ type diContainer struct {
 	organizeService   organization.OrganizeService
 
 	scannerRepo    filesystem.ScannerRepository
-	detectorPool   []inferenceRepo.DetectorRepository
-	recognizerPool []inferenceRepo.RecognizerRepository
+	detectorPool   []ml.DetectorRepository
+	recognizerPool []ml.RecognizerRepository
 }
 
 // SetDatabase устанавливает соединение с базой данных.
@@ -103,7 +102,7 @@ func (d *diContainer) ScannerRepository() filesystem.ScannerRepository {
 }
 
 // DetectorPool возвращает пул детекторов.
-func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.DetectorRepository {
+func (d *diContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository {
 	if d.detectorPool == nil {
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
@@ -119,7 +118,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 			preferred = provider.ProviderCPU
 		}
 
-		providerCfg := inference.ProviderConfig{
+		providerCfg := ml.ProviderConfig{
 			Preferred:     preferred,
 			ForceCPU:      cfg.ForceCPU,
 			DeviceID:      cfg.GPUDeviceID,
@@ -134,9 +133,9 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 			sessions = 1
 		}
 
-		pool := make([]inferenceRepo.DetectorRepository, sessions)
+		pool := make([]ml.DetectorRepository, sessions)
 		for i := 0; i < sessions; i++ {
-			det, err := inferenceRepo.NewDetectorRepository(inference.DetectorConfig{
+			det, err := ml.NewDetectorRepository(ml.DetectorConfig{
 				ModelPath: filepath.Join(modelsDir, "det_10g.onnx"),
 				Provider:  providerCfg,
 				DetThresh: float32(cfg.DetThresh),
@@ -158,7 +157,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 }
 
 // RecognizerPool возвращает пул распознавателей.
-func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.RecognizerRepository {
+func (d *diContainer) RecognizerPool(ctx context.Context) []ml.RecognizerRepository {
 	if d.recognizerPool == nil {
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
@@ -174,7 +173,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 			preferred = provider.ProviderCPU
 		}
 
-		providerCfg := inference.ProviderConfig{
+		providerCfg := ml.ProviderConfig{
 			Preferred:     preferred,
 			ForceCPU:      cfg.ForceCPU,
 			DeviceID:      cfg.GPUDeviceID,
@@ -189,9 +188,9 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 			sessions = 1
 		}
 
-		pool := make([]inferenceRepo.RecognizerRepository, sessions)
+		pool := make([]ml.RecognizerRepository, sessions)
 		for i := 0; i < sessions; i++ {
-			rec, err := inferenceRepo.NewRecognizerRepository(inference.RecognizerConfig{
+			rec, err := ml.NewRecognizerRepository(ml.RecognizerConfig{
 				ModelPath: filepath.Join(modelsDir, "w600k_r50.onnx"),
 				Provider:  providerCfg,
 			})

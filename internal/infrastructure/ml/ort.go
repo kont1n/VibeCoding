@@ -1,4 +1,4 @@
-package inference
+﻿package ml
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 
 	ort "github.com/yalue/onnxruntime_go"
 
-	"github.com/kont1n/face-grouper/internal/inference/provider"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 )
 
 var ortInitialized bool

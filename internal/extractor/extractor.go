@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/imageutil"
-	"github.com/kont1n/face-grouper/internal/inference"
-	"github.com/kont1n/face-grouper/internal/inference/provider"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/model"
 )
 

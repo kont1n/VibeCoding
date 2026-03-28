@@ -14,9 +14,8 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/config/env"
 	"github.com/kont1n/face-grouper/internal/imageutil"
-	"github.com/kont1n/face-grouper/internal/inference"
+	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/model"
-	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
 
@@ -34,15 +33,15 @@ type ExtractionService interface {
 
 type extractionService struct {
 	cfg          env.ExtractConfig
-	detectorPool []inferenceRepo.DetectorRepository
-	recPool      []inferenceRepo.RecognizerRepository
+	detectorPool []ml.DetectorRepository
+	recPool      []ml.RecognizerRepository
 }
 
 // NewExtractionService создаёт новый экземпляр сервиса экстракции.
 func NewExtractionService(
 	cfg env.ExtractConfig,
-	detectorPool []inferenceRepo.DetectorRepository,
-	recPool []inferenceRepo.RecognizerRepository,
+	detectorPool []ml.DetectorRepository,
+	recPool []ml.RecognizerRepository,
 ) ExtractionService {
 	return &extractionService{
 		cfg:          cfg,
@@ -67,13 +66,13 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	}
 
 	// Создаём пул детекторов.
-	detPool := make(chan inferenceRepo.DetectorRepository, len(s.detectorPool))
+	detPool := make(chan ml.DetectorRepository, len(s.detectorPool))
 	for _, det := range s.detectorPool {
 		detPool <- det
 	}
 
 	// Создаём пул распознавателей.
-	recPool := make(chan inferenceRepo.RecognizerRepository, len(s.recPool))
+	recPool := make(chan ml.RecognizerRepository, len(s.recPool))
 	for _, rec := range s.recPool {
 		recPool <- rec
 	}
@@ -156,7 +155,7 @@ type fileResult struct {
 func (s *extractionService) processImage(
 	ctx context.Context,
 	imagePath string,
-	detPool chan inferenceRepo.DetectorRepository,
+	detPool chan ml.DetectorRepository,
 	recBatcher *recognizerBatcher,
 	recSize int,
 	thumbDir string,
@@ -202,7 +201,7 @@ func (s *extractionService) processImage(
 	// Выравнивание лиц.
 	aligned := make([]*imageutil.Image, len(dets))
 	for i, d := range dets {
-		aligned[i] = inference.NormCrop(img, d.Kps, recSize)
+		aligned[i] = ml.NormCrop(img, d.Kps, recSize)
 	}
 	defer func() {
 		for _, a := range aligned {
@@ -251,7 +250,7 @@ func (s *extractionService) processImage(
 	return faces, nil
 }
 
-func (s *extractionService) saveThumbnail(img *imageutil.Image, det inference.Detection, imagePath string, faceIdx int, thumbDir string) string {
+func (s *extractionService) saveThumbnail(img *imageutil.Image, det ml.Detection, imagePath string, faceIdx int, thumbDir string) string {
 	h := img.Height
 	w := img.Width
 
@@ -346,14 +345,14 @@ type recognizeItem struct {
 
 type recognizerBatcher struct {
 	items        chan recognizeItem
-	recPool      chan inferenceRepo.RecognizerRepository
+	recPool      chan ml.RecognizerRepository
 	batchSize    int
 	flushTimeout time.Duration
 	closeOnce    sync.Once
 	wg           sync.WaitGroup
 }
 
-func newRecognizerBatcher(recPool chan inferenceRepo.RecognizerRepository, workers, batchSize int, flushTimeout time.Duration) *recognizerBatcher {
+func newRecognizerBatcher(recPool chan ml.RecognizerRepository, workers, batchSize int, flushTimeout time.Duration) *recognizerBatcher {
 	if workers <= 0 {
 		workers = 1
 	}
