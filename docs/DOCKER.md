@@ -103,6 +103,9 @@ mkdir -p dataset output models
 ### 2. Run with Docker Compose
 
 ```bash
+# Navigate to docker directory
+cd deploy/docker
+
 # CPU version
 docker-compose up -d face-grouper-cpu
 

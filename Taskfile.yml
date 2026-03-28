@@ -182,18 +182,21 @@ docker:run:rocm:
 
 docker:compose:up:
   desc: "Start with docker-compose"
+  dir: deploy/docker
   cmds:
     - echo "🚀 Starting docker-compose..."
     - docker-compose up -d
 
 docker:compose:down:
   desc: "Stop docker-compose"
+  dir: deploy/docker
   cmds:
     - echo "🛑 Stopping docker-compose..."
     - docker-compose down
 
 docker:logs:
   desc: "View docker-compose logs"
+  dir: deploy/docker
   cmds:
     - docker-compose logs -f
 

@@ -503,8 +503,9 @@ face-grouper/
 │   ├── docker/                # Docker файлы
 │   │   ├── Dockerfile         # CPU версия
 │   │   ├── Dockerfile.nvidia  # NVIDIA GPU версия
-│   │   └── Dockerfile.rocm    # AMD ROCm версия
-│   └── compose/               # Docker Compose файлы
+│   │   ├── Dockerfile.rocm    # AMD ROCm версия
+│   │   └── docker-compose.yml # Docker Compose
+│   └── compose/               # Docker Compose файлы (future)
 ├── docs/                      # Документация
 │   ├── README.md              # Индекс документации
 │   ├── DOCKER.md              # Docker руководство

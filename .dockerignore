@@ -5,7 +5,6 @@
 
 # Docker
 deploy/docker/
-docker-compose*.yml
 .dockerignore
 
 # Build artifacts
