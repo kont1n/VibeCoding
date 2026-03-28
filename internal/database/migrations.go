@@ -5,11 +5,8 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"io/fs"
+	"strings"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,138 +20,62 @@ type Migrator struct {
 
 // NewMigrator creates a new Migrator instance.
 func NewMigrator(pool *pgxpool.Pool) *Migrator {
-	return &Migrator{
-		pool: pool,
-	}
+	return &Migrator{pool: pool}
 }
 
-// Migrate runs all pending migrations.
+// Migrate runs all pending migrations using pgx directly.
 func (m *Migrator) Migrate(ctx context.Context) error {
-	// Use pool's underlying database connection
-	db := m.pool.Pool()
-	
-	// Create database driver
-	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
+	// Read all migration files
+	files, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("create db driver: %w", err)
+		return fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	// Create source driver from embedded FS
-	sourceDriver, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("create source driver: %w", err)
-	}
-
-	// Create migrator
-	migt, err := migrate.NewWithInstance(
-		"iofs",
-		sourceDriver,
-		"postgres",
-		dbDriver,
-	)
-	if err != nil {
-		return fmt.Errorf("create migrator: %w", err)
-	}
-
-	// Run migrations
-	if err := migt.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
-	if err == migrate.ErrNoChange {
-		return nil
-	}
-
-	return nil
-}
-
-// MigrateTo migrates to a specific version.
-func (m *Migrator) MigrateTo(ctx context.Context, version uint) error {
-	db := m.pool.Pool()
-
-	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("create db driver: %w", err)
-	}
-
-	sourceDriver, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("create source driver: %w", err)
-	}
-
-	migt, err := migrate.NewWithInstance("iofs", sourceDriver, "postgres", dbDriver)
-	if err != nil {
-		return fmt.Errorf("create migrator: %w", err)
-	}
-
-	if err := migt.Migrate(version); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("migrate to version %d: %w", version, err)
-	}
-
-	return nil
-}
-
-// GetVersion returns the current database schema version.
-func (m *Migrator) GetVersion(ctx context.Context) (uint, bool, error) {
-	db := m.pool.Pool()
-
-	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return 0, false, fmt.Errorf("create db driver: %w", err)
-	}
-
-	migt, err := migrate.NewWithInstance("postgres", dbDriver, "postgres", nil)
-	if err != nil {
-		return 0, false, fmt.Errorf("create migrator: %w", err)
-	}
-
-	version, dirty, err := migt.Version()
-	if err != nil {
-		return 0, false, fmt.Errorf("get version: %w", err)
-	}
-
-	return version, dirty, nil
-}
-
-// Rollback rolls back the last migration.
-func (m *Migrator) Rollback(ctx context.Context) error {
-	db := m.pool.Pool()
-
-	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("create db driver: %w", err)
-	}
-
-	sourceDriver, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("create source driver: %w", err)
-	}
-
-	migt, err := migrate.NewWithInstance("iofs", sourceDriver, "postgres", dbDriver)
-	if err != nil {
-		return fmt.Errorf("create migrator: %w", err)
-	}
-
-	if err := migt.Steps(-1); err != nil {
-		return fmt.Errorf("rollback: %w", err)
-	}
-
-	return nil
-}
-
-// GetAvailableMigrations returns a list of available migrations.
-func (m *Migrator) GetAvailableMigrations() ([]string, error) {
-	files, err := fs.ReadDir(migrationsFS, "migrations")
-	if err != nil {
-		return nil, fmt.Errorf("read migrations dir: %w", err)
-	}
-
-	var migrations []string
+	// Apply migrations in order
 	for _, file := range files {
-		if !file.IsDir() && file.Name() != ".gitkeep" {
-			migrations = append(migrations, file.Name())
+		if file.IsDir() {
+			continue
+		}
+
+		content, err := migrationsFS.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", file.Name(), err)
+		}
+
+		// Execute migration
+		// Split by semicolons to handle multiple statements
+		statements := strings.Split(string(content), ";")
+		for _, stmt := range statements {
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" || strings.HasPrefix(stmt, "--") {
+				continue
+			}
+
+			_, err = m.pool.Exec(ctx, stmt)
+			if err != nil {
+				// Ignore "already exists" errors
+				if strings.Contains(err.Error(), "already exists") {
+					continue
+				}
+				return fmt.Errorf("execute migration %s: %w", file.Name(), err)
+			}
 		}
 	}
 
-	return migrations, nil
+	return nil
+}
+
+// MigrateTo migrates to a specific version (not implemented for simple pgx migrations).
+func (m *Migrator) MigrateTo(ctx context.Context, version uint) error {
+	return fmt.Errorf("MigrateTo not implemented - use Migrate for sequential migrations")
+}
+
+// GetVersion returns the current database schema version (not implemented).
+func (m *Migrator) GetVersion(ctx context.Context) (uint, bool, error) {
+	return 0, false, fmt.Errorf("GetVersion not implemented")
+}
+
+// Rollback rolls back the last migration (not implemented).
+func (m *Migrator) Rollback(ctx context.Context) error {
+	return fmt.Errorf("Rollback not implemented")
 }

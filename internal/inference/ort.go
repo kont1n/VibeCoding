@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"strconv"
 
-	ort "github.com/yalue/onnxruntime_go"
 	"github.com/kont1n/face-grouper/internal/inference/provider"
+	ort "github.com/yalue/onnxruntime_go"
 )
 
 var ortInitialized bool

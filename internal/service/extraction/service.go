@@ -239,11 +239,11 @@ func (s *extractionService) processImage(
 				X2: float32(d.X2),
 				Y2: float32(d.Y2),
 			},
-			Keypoints:    keypoints,
-			Embedding:    embeddings[i],
-			DetScore:     float32(d.Score),
-			Thumbnail:    thumb,
-			FilePath:     imagePath,
+			Keypoints:     keypoints,
+			Embedding:     embeddings[i],
+			DetScore:      float32(d.Score),
+			Thumbnail:     thumb,
+			FilePath:      imagePath,
 			ThumbnailPath: thumb,
 		}
 	}

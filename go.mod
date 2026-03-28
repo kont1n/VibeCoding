@@ -6,7 +6,6 @@ require (
 	github.com/bufbuild/buf v1.66.1
 	github.com/daixiang0/gci v0.14.0
 	github.com/fullstorydev/grpcurl v1.9.3
-	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/golangci/golangci-lint/v2 v2.11.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
@@ -199,7 +198,6 @@ require (
 	github.com/ldez/tagliatelle v0.7.2 // indirect
 	github.com/ldez/usetesting v0.5.0 // indirect
 	github.com/leonklingele/grouper v1.1.2 // indirect
-	github.com/lib/pq v1.11.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/macabu/inamedparam v0.2.0 // indirect
 	github.com/manuelarte/embeddedstructfieldcheck v0.4.0 // indirect

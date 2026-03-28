@@ -30,10 +30,10 @@ type Detector struct {
 
 // DetectorConfig configures the SCRFD detector.
 type DetectorConfig struct {
-	ModelPath  string
-	Provider   ProviderConfig
-	DetThresh  float32
-	NMSThresh  float32
+	ModelPath string
+	Provider  ProviderConfig
+	DetThresh float32
+	NMSThresh float32
 }
 
 // NewDetector loads the SCRFD ONNX model and inspects its outputs to determine

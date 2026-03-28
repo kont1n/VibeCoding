@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/config"
+	"github.com/kont1n/face-grouper/internal/database"
 	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/inference/provider"
 	"github.com/kont1n/face-grouper/internal/report"
@@ -64,7 +65,7 @@ func (a *App) initDI(_ context.Context) error {
 // initDatabase инициализирует базу данных.
 func (a *App) initDatabase(ctx context.Context) error {
 	cfg := config.AppConfig.Database
-	
+
 	db, err := database.New(ctx, cfg)
 	if err != nil {
 		// Database is optional for now, log warning and continue
@@ -73,15 +74,15 @@ func (a *App) initDatabase(ctx context.Context) error {
 		)
 		return nil
 	}
-	
+
 	a.diContainer.SetDatabase(db)
-	
+
 	// Register database close
 	closer.AddNamed("database", func(ctx context.Context) error {
 		db.Close()
 		return nil
 	})
-	
+
 	// Log database health
 	health, err := db.Health(ctx)
 	if err != nil {
@@ -93,7 +94,7 @@ func (a *App) initDatabase(ctx context.Context) error {
 			zap.Strings("extensions", health.Extensions),
 		)
 	}
-	
+
 	return nil
 }
 
@@ -134,7 +135,7 @@ func (a *App) runViewOnly(ctx context.Context) error {
 func (a *App) runProcess(ctx context.Context) error {
 	// Select and initialize ONNX Runtime provider
 	cfg := config.AppConfig.Extract
-	
+
 	// Determine preferred provider type
 	var preferred provider.ProviderType
 	if cfg.GPU {
@@ -145,7 +146,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	} else {
 		preferred = provider.ProviderCPU
 	}
-	
+
 	providerCfg := inference.ProviderConfig{
 		Preferred:     preferred,
 		ForceCPU:      cfg.ForceCPU,
@@ -153,19 +154,19 @@ func (a *App) runProcess(ctx context.Context) error {
 		AllowFallback: true,
 		LogSelection:  true,
 	}
-	
+
 	// Determine library path
 	var ortLibPath string
 	if cfg.GPU && !cfg.ForceCPU {
 		// Try GPU path first
 		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
-	
+
 	if err := inferenceRepo.SelectAndInitializeProvider(providerCfg, ortLibPath); err != nil {
 		return fmt.Errorf("ONNX Runtime init: %w", err)
 	}
 	defer inferenceRepo.DestroyORT()
-	
+
 	// Log selected provider
 	selectedProvider := inferenceRepo.GetSelectedProvider()
 	logger.Info(ctx, "ONNX Runtime provider initialized",
