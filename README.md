@@ -1,6 +1,28 @@
 # Face Grouping Service
 
+[![Go Build](https://github.com/kont1n/face-grouper/actions/workflows/go.yml/badge.svg)](https://github.com/kont1n/face-grouper/actions/workflows/go.yml)
+[![Docker Build](https://github.com/kont1n/face-grouper/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kont1n/face-grouper/pkgs/container/face-grouper)
+[![Docker Pulls](https://img.shields.io/docker/pulls/kont1n/face-grouper)](https://github.com/kont1n/face-grouper/pkgs/container/face-grouper)
+[![License](https://img.shields.io/github/license/kont1n/face-grouper)](LICENSE)
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/kont1n/face-grouper)](https://goreportcard.com/report/github.com/kont1n/face-grouper)
+[![Go Reference](https://pkg.go.dev/badge/github.com/kont1n/face-grouper.svg)](https://pkg.go.dev/github.com/kont1n/face-grouper)
+
 Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python и OpenCV. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, алгоритмический выбор аватара и веб-интерфейс для просмотра результатов.
+
+## Особенности
+
+| Feature | CPU | NVIDIA GPU | AMD GPU |
+|---------|-----|------------|---------|
+| **Support** | ✅ | ✅ | ✅ |
+| **Docker** | ✅ | ✅ | ✅ |
+| **Performance** | Baseline | 5-10x faster | 3-8x faster |
+| **Provider** | Default | CUDA | ROCm |
+
+**Quick Links:**
+- [Docker Deployment](DOCKER.md)
+- [Quick Start](QUICKSTART.md)
+- [GPU Setup](#gpu-support)
 
 ## Архитектура
 
