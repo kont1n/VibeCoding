@@ -45,7 +45,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 
 	// Run migrations if enabled
 	if cfg.RunMigrations {
-		migrator := postgres.NewMigrator(pool)
+		migrator := NewMigrator(pool)
 		if err := migrator.Migrate(ctx); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("run migrations: %w", err)

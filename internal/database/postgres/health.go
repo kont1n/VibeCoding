@@ -75,11 +75,9 @@ func IsHealthy(ctx context.Context, pool *pgxpool.Pool) bool {
 func GetConnectionStats(pool *pgxpool.Pool) map[string]uint32 {
 	stats := pool.Stat()
 	return map[string]uint32{
-		"total_conns":     stats.TotalConns(),
-		"acquired_conns":  stats.AcquiredConns(),
-		"idle_conns":      stats.IdleConns(),
-		"max_conns":       stats.MaxConns(),
-		"new_conns_count": stats.NewConnsCount(),
-		"destroyed_conns": stats.DestroyedConnsCount(),
+		"total_conns":    uint32(stats.TotalConns()),
+		"acquired_conns": uint32(stats.AcquiredConns()),
+		"idle_conns":     uint32(stats.IdleConns()),
+		"max_conns":      uint32(stats.MaxConns()),
 	}
 }
