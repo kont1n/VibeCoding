@@ -57,19 +57,19 @@ build:cpu:
   desc: "Build CPU Docker image"
   cmds:
     - echo "🐳 Building CPU image..."
-    - docker build -t {{.IMAGE_NAME}}:cpu -t {{.IMAGE_NAME}}:cpu-{{.VERSION}} -f Dockerfile --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+    - docker build -t {{.IMAGE_NAME}}:cpu -t {{.IMAGE_NAME}}:cpu-{{.VERSION}} -f deploy/docker/Dockerfile --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
 
 build:gpu:
   desc: "Build NVIDIA GPU Docker image"
   cmds:
     - echo "🐳 Building NVIDIA GPU image..."
-    - docker build -t {{.IMAGE_NAME}}:gpu -t {{.IMAGE_NAME}}:gpu-{{.VERSION}} -f Dockerfile.nvidia --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+    - docker build -t {{.IMAGE_NAME}}:gpu -t {{.IMAGE_NAME}}:gpu-{{.VERSION}} -f deploy/docker/Dockerfile.nvidia --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
 
 build:rocm:
   desc: "Build AMD ROCm Docker image"
   cmds:
     - echo "🐳 Building AMD ROCm image..."
-    - docker build -t {{.IMAGE_NAME}}:rocm -t {{.IMAGE_NAME}}:rocm-{{.VERSION}} -f Dockerfile.rocm --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+    - docker build -t {{.IMAGE_NAME}}:rocm -t {{.IMAGE_NAME}}:rocm-{{.VERSION}} -f deploy/docker/Dockerfile.rocm --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
 
 # =============================================================================
 # Format

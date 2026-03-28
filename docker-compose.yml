@@ -13,7 +13,7 @@ services:
   face-grouper-cpu:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/docker/Dockerfile
       args:
         ONNXRUNTIME_VERSION: "1.23.0"
     image: face-grouper:cpu
@@ -78,7 +78,7 @@ services:
   face-grouper-rocm:
     build:
       context: .
-      dockerfile: Dockerfile.rocm
+      dockerfile: deploy/docker/Dockerfile.rocm
       args:
         ONNXRUNTIME_VERSION: "1.23.0"
     image: face-grouper:rocm
@@ -156,7 +156,7 @@ services:
   face-grouper-gpu:
     build:
       context: .
-      dockerfile: Dockerfile.nvidia
+      dockerfile: deploy/docker/Dockerfile.nvidia
       args:
         ONNXRUNTIME_VERSION: "1.23.0"
     image: face-grouper:gpu

@@ -494,27 +494,45 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 ## Структура проекта
 
 ```
-├── cmd/
-│   └── main.go                       # Точка входа (DI, graceful shutdown)
-├── internal/
-│   ├── api/cli/                      # CLI API handlers
-│   ├── app/                          # Приложение + DI контейнер
-│   ├── config/                       # Конфигурация (.env + ENV)
-│   ├── model/                        # Доменные модели
-│   ├── repository/                   # Слой доступа к данным
-│   ├── service/                      # Бизнес-логика
-│   ├── inference/                    # ONNX Runtime inference
-│   ├── clustering/                   # Кластеризация (Union-Find + BLAS)
-│   ├── organizer/                    # Организация результатов
-│   ├── report/                       # JSON отчёты
-│   ├── avatar/                       # Оценка качества лиц
-│   └── web/                          # HTTP сервер + UI
-├── platform/pkg/                     # Платформенные пакеты
-│   ├── closer/                       # Graceful shutdown
-│   └── logger/                       # Zap logger wrapper
-├── models/                           # ONNX модели
-├── dataset/                          # Входные фото
-└── output/                           # Результаты
+face-grouper/
+├── cmd/                       # Точка входа (DI, graceful shutdown)
+│   └── main.go
+├── deploy/
+│   ├── docker/                # Docker файлы
+│   │   ├── Dockerfile         # CPU версия
+│   │   ├── Dockerfile.nvidia  # NVIDIA GPU версия
+│   │   └── Dockerfile.rocm    # AMD ROCm версия
+│   └── compose/               # Docker Compose файлы
+├── internal/                  # Внутренние пакеты
+│   ├── api/                   # API handlers
+│   ├── app/                   # Приложение + DI
+│   ├── config/                # Конфигурация
+│   ├── inference/             # ONNX Runtime inference
+│   ├── model/                 # Доменные модели
+│   ├── repository/            # Слой доступа к данным
+│   ├── service/               # Бизнес-логика
+│   └── web/                   # HTTP сервер
+├── platform/                  # Платформенные пакеты
+│   ├── closer/                # Graceful shutdown
+│   └── logger/                # Logger wrapper
+├── scripts/                   # Скрипты
+│   ├── install-tools.sh       # Установка инструментов
+│   ├── benchmark.sh           # Бенчмарки
+│   └── docker-build.sh        # Docker сборка
+├── tools/                     # Development tools
+├── dataset/                   # Входные фото
+├── models/                    # ONNX модели
+├── output/                    # Результаты
+├── runtime/                   # ONNX Runtime DLLs
+├── .dockerignore              # Docker ignore
+├── .golangci.yml              # Linter config
+├── .mockery.yaml              # Mock generation
+├── .pre-commit-config.yaml    # Pre-commit hooks
+├── docker-compose.yml         # Docker Compose
+├── go.mod                     # Go module
+├── go.work                    # Go workspace
+├── Taskfile.yml               # Task runner
+└── DOCKER.md                  # Docker documentation
 ```
 
 ## Модули

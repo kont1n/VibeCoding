@@ -131,19 +131,19 @@ Open browser:
 ### Build CPU Image
 
 ```bash
-docker build -t face-grouper:cpu -f Dockerfile .
+docker build -t face-grouper:cpu -f deploy/docker/Dockerfile .
 ```
 
 ### Build GPU Image (NVIDIA)
 
 ```bash
-docker build -t face-grouper:gpu -f Dockerfile.nvidia .
+docker build -t face-grouper:gpu -f deploy/docker/Dockerfile.nvidia .
 ```
 
 ### Build GPU Image (AMD ROCm)
 
 ```bash
-docker build -t face-grouper:rocm -f Dockerfile.rocm .
+docker build -t face-grouper:rocm -f deploy/docker/Dockerfile.rocm .
 ```
 
 ### Build with Custom ONNX Runtime Version
