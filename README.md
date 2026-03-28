@@ -279,25 +279,127 @@ go build -o face-grouper ./cmd
 
 ## Тестирование и CI
 
-### Локальные тесты core-пакетов
+### Разработка с Taskfile
 
+Проект использует [Taskfile](https://taskfile.dev/) для автоматизации задач разработки.
+
+**Установка Task:**
 ```bash
-go test ./internal/scanner ./internal/report ./internal/clustering -count=1
+# macOS
+brew install go-task
+
+# Windows (winget)
+winget install go-task
+
+# Linux
+snap install go-task
+
+# Или через go
+go install github.com/go-task/task/v3/cmd/task@latest
 ```
 
-### Compile-check пакетов без CGO
-
+**Основные команды:**
 ```bash
-go test ./internal/avatar ./internal/organizer ./internal/web -count=1
+# Показать все задачи
+task --list
+
+# Сборка приложения
+task build
+
+# Запуск тестов
+task test
+
+# Запуск линтеров
+task lint
+
+# Форматирование кода
+task format
+
+# Установка инструментов разработки
+task install-tools
+
+# Docker сборка
+task build:all
+
+# Запуск Docker контейнера
+task docker:run
+
+# Бенчмарки
+task benchmark
+
+# Очистка
+task clean
 ```
 
-### Benchmark кластеризации
+### Локальные тесты
 
 ```bash
-go test ./internal/clustering -bench BenchmarkCluster512D -benchmem -run ^$
+# Юнит-тесты
+go test -v ./...
+
+# Тесты с покрытием
+go test -v -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+
+# Бенчмарки
+go test ./internal/clustering -bench BenchmarkCluster -benchmem
 ```
+
+### Pre-commit хуки
+
+Проект использует [pre-commit](https://pre-commit.com/) для автоматических проверок.
+
+**Установка:**
+```bash
+# Установить pre-commit
+pip install pre-commit
+
+# Инициализировать хуки
+pre-commit install
+
+# Запустить все хуки
+pre-commit run --all-files
+```
+
+**Хуки выполняют:**
+- ✅ golangci-lint (линтинг кода)
+- ✅ go mod tidy (очистка зависимостей)
+- ✅ go test (тесты при push)
+- ✅ Проверка trailing whitespace
+- ✅ Проверка YAML/JSON
+- ✅ Secret detection
+- ✅ Dockerfile lint
+- ✅ Shell check
+
+### Инструменты разработки
+
+**Установка всех инструментов:**
+```bash
+# Скриптом
+./scripts/install-tools.sh
+
+# Или через Taskfile
+task install-tools
+```
+
+**Устанавливаемые инструменты:**
+- `golangci-lint` - Линтер
+- `mockery` - Генерация моков
+- `buf` - Работа с Protobuf
+- `grpcurl` - Тестирование gRPC
+- `gofumpt` - Форматирование
+- `gci` - Сортировка импортов
+- `gotestsum` - Улучшенный вывод тестов
+- `gosec` - Security сканирование
 
 ### CI (GitHub Actions)
+
+В проекте настроен workflow `.github/workflows/docker-build.yml`, который запускается на `push` и `pull_request` и выполняет:
+- unit-тесты
+- lint с помощью golangci-lint
+- сборку Docker образов (CPU, GPU, ROCm)
+- security сканирование с Trivy
+- публикацию в GHCR
 
 В репозитории настроен workflow `.github/workflows/ci.yml`, который запускается на `push` и `pull_request` и выполняет:
 - unit-тесты `scanner/report/clustering`
