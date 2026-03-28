@@ -3,8 +3,6 @@ package inference
 import (
 	"fmt"
 
-	ort "github.com/yalue/onnxruntime_go"
-
 	"github.com/kont1n/face-grouper/internal/imageutil"
 	"github.com/kont1n/face-grouper/internal/inference"
 )
@@ -80,12 +78,12 @@ func DestroyORT() {
 	inference.DestroyORT()
 }
 
-// InitORT инициализируем ONNX Runtime.
-func InitORT(libPath string) error {
-	return inference.InitORT(libPath)
+// SelectAndInitializeProvider выбирает и инициализирует провайдер ONNX Runtime.
+func SelectAndInitializeProvider(cfg inference.ProviderConfig, libPath string) error {
+	return inference.SelectAndInitializeProvider(cfg, libPath)
 }
 
-// SessionOptions создаем опции сессии.
-func SessionOptions(gpu bool) (*ort.SessionOptions, error) {
-	return inference.SessionOptions(gpu)
+// GetSelectedProvider возвращает выбранный провайдер.
+func GetSelectedProvider() inference.ProviderInfo {
+	return inference.GetSelectedProvider()
 }

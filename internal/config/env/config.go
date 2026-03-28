@@ -18,14 +18,17 @@ type ModelsConfig struct {
 
 // ExtractConfig хранит настройки извлечения эмбеддингов.
 type ExtractConfig struct {
-	Workers        int
-	GPU            bool
-	GPUDetSessions int
-	GPURecSessions int
-	EmbedBatchSize int
-	EmbedFlushMS   int
-	MaxDim         int
-	DetThresh      float64
+	Workers          int
+	GPU              bool
+	GPUDeviceID      int
+	ForceCPU         bool
+	ProviderPriority string
+	GPUDetSessions   int
+	GPURecSessions   int
+	EmbedBatchSize   int
+	EmbedFlushMS     int
+	MaxDim           int
+	DetThresh        float64
 }
 
 // ClusterConfig хранит настройки кластеризации.
@@ -69,14 +72,17 @@ func NewModelsConfig() ModelsConfig {
 // NewExtractConfig создаёт конфигурацию экстракции из ENV.
 func NewExtractConfig() ExtractConfig {
 	return ExtractConfig{
-		Workers:        getInt("EXTRACT_WORKERS", 4),
-		GPU:            getBool("GPU_ENABLED", false),
-		GPUDetSessions: getInt("GPU_DET_SESSIONS", 2),
-		GPURecSessions: getInt("GPU_REC_SESSIONS", 2),
-		EmbedBatchSize: getInt("EMBED_BATCH_SIZE", 64),
-		EmbedFlushMS:   getInt("EMBED_FLUSH_MS", 10),
-		MaxDim:         getInt("MAX_DIM", 1920),
-		DetThresh:      getFloat("DET_THRESH", 0.5),
+		Workers:          getInt("EXTRACT_WORKERS", 4),
+		GPU:              getBool("GPU_ENABLED", false),
+		GPUDeviceID:      getInt("GPU_DEVICE_ID", 0),
+		ForceCPU:         getBool("FORCE_CPU", false),
+		ProviderPriority: getEnv("PROVIDER_PRIORITY", "auto"),
+		GPUDetSessions:   getInt("GPU_DET_SESSIONS", 2),
+		GPURecSessions:   getInt("GPU_REC_SESSIONS", 2),
+		EmbedBatchSize:   getInt("EMBED_BATCH_SIZE", 64),
+		EmbedFlushMS:     getInt("EMBED_FLUSH_MS", 10),
+		MaxDim:           getInt("MAX_DIM", 1920),
+		DetThresh:        getFloat("DET_THRESH", 0.5),
 	}
 }
 

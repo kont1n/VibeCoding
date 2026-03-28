@@ -21,12 +21,12 @@ type Recognizer struct {
 // RecognizerConfig configures the ArcFace recognizer.
 type RecognizerConfig struct {
 	ModelPath string
-	GPU       bool
+	Provider  ProviderConfig
 }
 
 // NewRecognizer loads the ArcFace ONNX model.
 func NewRecognizer(cfg RecognizerConfig) (*Recognizer, error) {
-	opts, err := SessionOptions(cfg.GPU)
+	opts, err := SessionOptions(cfg.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("session options: %w", err)
 	}

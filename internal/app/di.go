@@ -8,6 +8,7 @@ import (
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/inference"
+	"github.com/kont1n/face-grouper/internal/inference/provider"
 	"github.com/kont1n/face-grouper/internal/repository/filesystem"
 	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
 	"github.com/kont1n/face-grouper/internal/service/clustering"
@@ -99,8 +100,26 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
 
-		sessions := cfg.Workers
+		// Determine preferred provider type
+		var preferred provider.ProviderType
 		if cfg.GPU {
+			preferred = provider.ProviderCUDA
+			if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+				preferred = provider.ParseProviderType(cfg.ProviderPriority)
+			}
+		} else {
+			preferred = provider.ProviderCPU
+		}
+
+		providerCfg := inference.ProviderConfig{
+			Preferred:     preferred,
+			ForceCPU:      cfg.ForceCPU,
+			DeviceID:      cfg.GPUDeviceID,
+			AllowFallback: true,
+		}
+
+		sessions := cfg.Workers
+		if cfg.GPU && !cfg.ForceCPU {
 			sessions = cfg.GPUDetSessions
 		}
 		if sessions <= 0 {
@@ -111,7 +130,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []inferenceRepo.Detector
 		for i := 0; i < sessions; i++ {
 			det, err := inferenceRepo.NewDetectorRepository(inference.DetectorConfig{
 				ModelPath: filepath.Join(modelsDir, "det_10g.onnx"),
-				GPU:       cfg.GPU,
+				Provider:  providerCfg,
 				DetThresh: float32(cfg.DetThresh),
 			})
 			if err != nil {
@@ -136,8 +155,26 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
 
-		sessions := cfg.Workers
+		// Determine preferred provider type
+		var preferred provider.ProviderType
 		if cfg.GPU {
+			preferred = provider.ProviderCUDA
+			if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+				preferred = provider.ParseProviderType(cfg.ProviderPriority)
+			}
+		} else {
+			preferred = provider.ProviderCPU
+		}
+
+		providerCfg := inference.ProviderConfig{
+			Preferred:     preferred,
+			ForceCPU:      cfg.ForceCPU,
+			DeviceID:      cfg.GPUDeviceID,
+			AllowFallback: true,
+		}
+
+		sessions := cfg.Workers
+		if cfg.GPU && !cfg.ForceCPU {
 			sessions = cfg.GPURecSessions
 		}
 		if sessions <= 0 {
@@ -148,7 +185,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []inferenceRepo.Recogn
 		for i := 0; i < sessions; i++ {
 			rec, err := inferenceRepo.NewRecognizerRepository(inference.RecognizerConfig{
 				ModelPath: filepath.Join(modelsDir, "w600k_r50.onnx"),
-				GPU:       cfg.GPU,
+				Provider:  providerCfg,
 			})
 			if err != nil {
 				panic(fmt.Sprintf("failed to create recognizer %d: %v", i, err))

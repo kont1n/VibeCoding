@@ -30,16 +30,16 @@ type Detector struct {
 
 // DetectorConfig configures the SCRFD detector.
 type DetectorConfig struct {
-	ModelPath string
-	GPU       bool
-	DetThresh float32
-	NMSThresh float32
+	ModelPath  string
+	Provider   ProviderConfig
+	DetThresh  float32
+	NMSThresh  float32
 }
 
 // NewDetector loads the SCRFD ONNX model and inspects its outputs to determine
 // the FPN configuration (strides, anchors, keypoints support).
 func NewDetector(cfg DetectorConfig) (*Detector, error) {
-	opts, err := SessionOptions(cfg.GPU)
+	opts, err := SessionOptions(cfg.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("session options: %w", err)
 	}

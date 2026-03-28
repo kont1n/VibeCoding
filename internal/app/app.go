@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/config"
+	"github.com/kont1n/face-grouper/internal/inference"
+	"github.com/kont1n/face-grouper/internal/inference/provider"
 	"github.com/kont1n/face-grouper/internal/report"
 	inferenceRepo "github.com/kont1n/face-grouper/internal/repository/inference"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
@@ -93,21 +95,52 @@ func (a *App) runViewOnly(ctx context.Context) error {
 
 // runProcess запускает полный пайплайн обработки.
 func (a *App) runProcess(ctx context.Context) error {
-	// Инициализация ONNX Runtime
+	// Select and initialize ONNX Runtime provider
+	cfg := config.AppConfig.Extract
+	
+	// Determine preferred provider type
+	var preferred provider.ProviderType
+	if cfg.GPU {
+		preferred = provider.ProviderCUDA // Default to CUDA for GPU
+		if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+			preferred = provider.ParseProviderType(cfg.ProviderPriority)
+		}
+	} else {
+		preferred = provider.ProviderCPU
+	}
+	
+	providerCfg := inference.ProviderConfig{
+		Preferred:     preferred,
+		ForceCPU:      cfg.ForceCPU,
+		DeviceID:      cfg.GPUDeviceID,
+		AllowFallback: true,
+		LogSelection:  true,
+	}
+	
+	// Determine library path
 	var ortLibPath string
-	if config.AppConfig.Extract.GPU {
-		// Используем GPU версию DLL
+	if cfg.GPU && !cfg.ForceCPU {
+		// Try GPU path first
 		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
-	if err := inferenceRepo.InitORT(ortLibPath); err != nil {
+	
+	if err := inferenceRepo.SelectAndInitializeProvider(providerCfg, ortLibPath); err != nil {
 		return fmt.Errorf("ONNX Runtime init: %w", err)
 	}
 	defer inferenceRepo.DestroyORT()
+	
+	// Log selected provider
+	selectedProvider := inferenceRepo.GetSelectedProvider()
+	logger.Info(ctx, "ONNX Runtime provider initialized",
+		zap.String("provider", selectedProvider.Name),
+		zap.String("type", string(selectedProvider.Type)),
+		zap.Int("device_id", selectedProvider.DeviceID),
+	)
 
 	api := a.diContainer.API(ctx)
-	cfg := config.AppConfig
+	appCfg := config.AppConfig
 
-	outputDir := cfg.App.OutputDir
+	outputDir := appCfg.App.OutputDir
 	thumbDir := filepath.Join(outputDir, ".thumbnails")
 
 	// Создаём директорию вывода
@@ -129,7 +162,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	// --- Scan ---
 	stageStart := time.Now()
 	fmt.Fprintf(w, "=== Scanning directory ===\n")
-	files, err := api.Scan(ctx, cfg.App.InputDir)
+	files, err := api.Scan(ctx, appCfg.App.InputDir)
 	if err != nil {
 		return fmt.Errorf("scan error: %w", err)
 	}
@@ -152,13 +185,9 @@ func (a *App) runProcess(ctx context.Context) error {
 	// --- Extract ---
 	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
-	if cfg.Extract.GPU {
-		fmt.Fprintf(w, "Mode: GPU (CUDA)\n")
-	} else {
-		fmt.Fprintf(w, "Mode: CPU, %d worker(s)\n", cfg.Extract.Workers)
-	}
-	if cfg.Extract.MaxDim > 0 {
-		fmt.Fprintf(w, "Pre-resize: max %dpx\n", cfg.Extract.MaxDim)
+	fmt.Fprintf(w, "Mode: %s, %d worker(s)\n", selectedProvider.Name, appCfg.Extract.Workers)
+	if appCfg.Extract.MaxDim > 0 {
+		fmt.Fprintf(w, "Pre-resize: max %dpx\n", appCfg.Extract.MaxDim)
 	}
 
 	extractResult, err := api.Extract(ctx, files, thumbDir, w)
@@ -176,7 +205,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	// --- Cluster ---
 	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Clustering faces ===\n")
-	clusters, err := api.Cluster(ctx, extractResult.Faces, cfg.Cluster.Threshold)
+	clusters, err := api.Cluster(ctx, extractResult.Faces, appCfg.Cluster.Threshold)
 	if err != nil {
 		return fmt.Errorf("clustering error: %w", err)
 	}
@@ -186,14 +215,14 @@ func (a *App) runProcess(ctx context.Context) error {
 	// --- Organize ---
 	stageStart = time.Now()
 	fmt.Fprintf(w, "=== Organizing output ===\n")
-	persons, err := api.Organize(ctx, clusters, outputDir, cfg.Organizer.AvatarUpdateThreshold, w)
+	persons, err := api.Organize(ctx, clusters, outputDir, appCfg.Organizer.AvatarUpdateThreshold, w)
 	if err != nil {
 		return fmt.Errorf("organizer error: %w", err)
 	}
 	stageDurations["organize_avatar"] = time.Since(stageStart)
 
 	// --- Build report ---
-	rpt := a.buildReport(start, cfg, extractResult, persons, stageDurations)
+	rpt := a.buildReport(start, appCfg, extractResult, persons, stageDurations)
 
 	if err := report.Save(rpt, outputDir); err != nil {
 		fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
@@ -203,9 +232,9 @@ func (a *App) runProcess(ctx context.Context) error {
 	a.printSummary(w, rpt, stageDurations)
 
 	// --- Web UI ---
-	if cfg.Web.Serve {
+	if appCfg.Web.Serve {
 		fmt.Fprintf(w, "\n=== Starting web UI ===\n")
-		return a.runWebUI(ctx, outputDir, cfg.Web.Port)
+		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)
 	}
 
 	fmt.Fprintf(w, "\nTip: run with --serve to view results in browser, or --view to view previous results\n")
