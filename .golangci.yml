@@ -1,0 +1,320 @@
+# =============================================================================
+# Face Grouper - golangci-lint Configuration
+# =============================================================================
+# Documentation: https://golangci-lint.run/usage/configuration/
+# =============================================================================
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+  
+  # Include test files
+  tests: true
+  
+  # Allow parallel runs
+  allow-parallel-runners: true
+  
+  # Modules download mode
+  modules-download-mode: readonly
+
+# Output configuration
+output:
+  formats:
+    - format: colored-line-number
+  
+  # Print lines of code with issue
+  print-issued-lines: true
+  
+  # Print linter name
+  print-linter-name: true
+  
+  # Make issues output unique by line
+  uniq-by-line: true
+  
+  # Sort results
+  sort-results: true
+
+# Linters configuration
+linters:
+  # Disable all linters by default
+  disable-all: true
+  
+  # Enable specific linters
+  enable:
+    # Default linters
+    - govet           # Suspicious constructs
+    - errcheck        # Unchecked errors
+    - staticcheck     # Static analysis
+    - unused          # Unused constants/variables/functions/types
+    - gosimple        # Simplify code
+    - ineffassign     # Ineffective assignments
+    - typecheck       # Parse and typecheck
+    
+    # Additional linters
+    - gofmt           # Formatting issues
+    - goimports       # Import formatting
+    - misspell        # Spelling mistakes
+    - unconvert       # Unnecessary type conversions
+    - nakedret        # Naked returns in functions
+    - gocritic        # Diagnostics for potential bugs
+    - gosec           # Security issues
+    - prealloc        # Slice allocation optimization
+    - revive          # Configurable linter
+    - bodyclose       # HTTP response body not closed
+    - contextcheck    # Context passing
+    - dupl            # Code duplicates
+    - errname         # Error variable naming
+    - errorlint       # Error wrapping
+    - exportloopref   # Pointer export
+    - forcetypeassert # Force type assertions
+    - gci             # Import ordering
+    - ginkgolinter    # Ginkgo linter
+    - gocheckcompilerdirectives # Compiler directives
+    - goconst         # Repeated strings
+    - godot           # Comment periods
+    - goheader        # Header comments
+    - gomoddirectives # Go mod directives
+    - goprintffuncname # Printf functions
+    - grouper         # Group declarations
+    - importas        # Import aliases
+    - makezero        # Make with size 0
+    - musttag         # Struct tags
+    - nosprintfhostport # Sprintf for host:port
+    - predeclared     # Predeclared identifiers
+    - promlinter      # Prometheus metrics
+    - protogetter     # Proto getters
+    - rowserrcheck    # SQL rows error check
+    - sloglint        # slog lint
+    - sqlclosecheck   # SQL close check
+    - tenv            # t.Setenv
+    - testableexamples # Testable examples
+    - tparallel       # t.Parallel
+    - unparam         # Unused parameters
+    - usestdlibvars   # Standard library variables
+    - wastedassign    # Wasted assignments
+    - whitespace      # Whitespace issues
+    - zerologlint     # zerolog lint
+
+# Linters settings
+linters-settings:
+  # govet settings
+  govet:
+    # Enable all checks
+    enable-all: true
+    # Disable specific checks
+    disable:
+      - fieldalignment  # Too strict
+    # Settings for specific checks
+    settings:
+      shadow:
+        strict: true
+  
+  # gofmt settings
+  gofmt:
+    # Simplify code
+    simplify: true
+    # Rewrite rules
+    rewrite-rules:
+      - pattern: 'interface{}'
+        replacement: 'any'
+  
+  # goimports settings
+  goimports:
+    # Local prefix for imports
+    local-prefixes: github.com/kont1n/face-grouper
+  
+  # gci settings
+  gci:
+    sections:
+      - standard           # Standard library
+      - default            # External packages
+      - prefix(github.com/kont1n/face-grouper)  # Internal packages
+    custom-order: true
+  
+  # gocritic settings
+  gocritic:
+    # Enable all checks
+    enable-all: true
+    # Disable specific checks
+    disable:
+      - whyNoLint  # Too verbose
+      - hugeParam  # Too strict
+      - rangeValCopy  # Too strict
+  
+  # gosec settings
+  gosec:
+    # Minimum severity
+    severity: medium
+    # Minimum confidence
+    confidence: medium
+    # Exclude rules
+    excludes:
+      - G104  # Errors unhandled (handled by errcheck)
+      - G115  # Integer overflow (false positives)
+  
+  # revive settings
+  revive:
+    # Confidence threshold
+    confidence: 0.8
+    # Rules
+    rules:
+      - name: blank-imports
+        disabled: false
+      - name: context-as-argument
+        disabled: false
+      - name: context-keys-type
+        disabled: false
+      - name: dot-imports
+        disabled: false
+      - name: error-return
+        disabled: false
+      - name: error-strings
+        disabled: false
+      - name: error-naming
+        disabled: false
+      - name: exported
+        disabled: false
+        arguments:
+          - disableStutteringCheck
+      - name: if-return
+        disabled: false
+      - name: increment-decrement
+        disabled: false
+      - name: var-naming
+        disabled: false
+        arguments:
+          - ["ID"]  # Allow list
+      - name: var-declaration
+        disabled: false
+      - name: package-comments
+        disabled: false
+      - name: range
+        disabled: false
+      - name: receiver-naming
+        disabled: false
+      - name: time-naming
+        disabled: false
+      - name: unexported-return
+        disabled: false
+      - name: indent-error-flow
+        disabled: false
+      - name: errorf
+        disabled: false
+      - name: empty-block
+        disabled: false
+      - name: superfluous-else
+        disabled: false
+      - name: unused-parameter
+        disabled: true  # Too strict
+      - name: unreachable-code
+        disabled: false
+      - name: redefines-builtin-id
+        disabled: false
+  
+  # misspell settings
+  misspell:
+    # Locale
+    locale: US
+    # Extra words
+    extra-words:
+      - typo: "automatiz"
+        correction: "automatiz"
+  
+  # godot settings
+  godot:
+    # Check all comments
+    scope: all
+    # Exclude patterns
+    exclude:
+      - "^ \\+gen"
+      - "^ \\+gowrap"
+      - "^noinspection"
+  
+  # errcheck settings
+  errcheck:
+    # Check for blank identifiers
+    check-blank: true
+    # Check for type assertions
+    check-type-assertions: true
+
+# Issues configuration
+issues:
+  # Use default excludes
+  exclude-use-default: false
+  
+  # Maximum issues per linter
+  max-issues-per-linter: 0
+  
+  # Maximum same issues
+  max-same-issues: 0
+  
+  # Exclude patterns
+  exclude-rules:
+    # Exclude some linters from running on tests
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - dupl
+        - gocritic
+        - forcetypeassert
+    
+    # Exclude unused from tests
+    - path: _test\.go
+      linters:
+        - unused
+      text: "func.*is unused"
+    
+    # Allow long lines in generated files
+    - path: "\\.pb\\.go$"
+      linters:
+        - gofmt
+        - goimports
+        - lll
+    
+    # Allow mocks
+    - path: "mocks/"
+      linters:
+        - errcheck
+        - gosec
+        - unused
+        - varnamelen
+    
+    # Allow generated code
+    - path: "internal/inference/pb/"
+      linters:
+        - all
+        - -goimports
+        - -gofmt
+    
+    # Allow defer in tests
+    - path: _test\.go
+      text: "defer"
+      linters:
+        - gocritic
+  
+  # Include specific patterns
+  include:
+    - EXC0002  # Missing error checking
+  
+  # Fix found issues
+  fix: false
+
+# Severity configuration
+severity:
+  # Default severity
+  default-severity: error
+  
+  # Rules for severity
+  rules:
+    - linters:
+        - gosec
+      severity: error
+    - linters:
+        - errcheck
+      severity: error
+    - linters:
+        - gofmt
+        - goimports
+        - misspell
+      severity: warning

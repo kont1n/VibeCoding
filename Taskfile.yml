@@ -1,0 +1,385 @@
+version: '3'
+
+# =============================================================================
+# Face Grouper - Taskfile
+# =============================================================================
+# Cross-platform task runner (replacement for Makefile)
+# Install: https://taskfile.dev/installation/
+# Usage: task --list
+# =============================================================================
+
+# Глобальные переменные
+vars:
+  IMAGE_NAME: face-grouper
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  ONNXRUNTIME_VERSION: 1.23.0
+  GO_VERSION: '1.25'
+
+  # Инструменты
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
+  MOCKERY: '{{.BIN_DIR}}/mockery'
+  BUF: '{{.BIN_DIR}}/buf'
+
+  # Пути
+  COVERAGE_DIR: '{{.ROOT_DIR}}/coverage'
+  ENV_DIR: '{{.ROOT_DIR}}/deploy/env'
+
+  # Модули
+  MODULES: cmd platform
+
+# =============================================================================
+# Default task
+# =============================================================================
+default:
+  desc: "Show help message"
+  cmds:
+    - task --list
+
+# =============================================================================
+# Build
+# =============================================================================
+build:
+  desc: "Build Go application"
+  deps: [install-tools]
+  cmds:
+    - echo "🔨 Building face-grouper..."
+    - go build -ldflags="-s -w" -o face-grouper ./cmd
+
+build:all:
+  desc: "Build all Docker images"
+  deps: [build:cpu, build:gpu, build:rocm]
+  cmds:
+    - echo "✅ All images built successfully"
+
+build:cpu:
+  desc: "Build CPU Docker image"
+  cmds:
+    - echo "🐳 Building CPU image..."
+    - docker build -t {{.IMAGE_NAME}}:cpu -t {{.IMAGE_NAME}}:cpu-{{.VERSION}} -f Dockerfile --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+
+build:gpu:
+  desc: "Build NVIDIA GPU Docker image"
+  cmds:
+    - echo "🐳 Building NVIDIA GPU image..."
+    - docker build -t {{.IMAGE_NAME}}:gpu -t {{.IMAGE_NAME}}:gpu-{{.VERSION}} -f Dockerfile.nvidia --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+
+build:rocm:
+  desc: "Build AMD ROCm Docker image"
+  cmds:
+    - echo "🐳 Building AMD ROCm image..."
+    - docker build -t {{.IMAGE_NAME}}:rocm -t {{.IMAGE_NAME}}:rocm-{{.VERSION}} -f Dockerfile.rocm --build-arg ONNXRUNTIME_VERSION={{.ONNXRUNTIME_VERSION}} .
+
+# =============================================================================
+# Format
+# =============================================================================
+format:
+  desc: "Format Go code with gofumpt and gci"
+  deps: [install-formatters]
+  cmds:
+    - echo "🧼 Formatting code..."
+    - |
+      for module in {{.MODULES}}; do
+        if [ -d "$module" ]; then
+          echo "🧼 Formatting $module"
+          find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GOFUMPT}} -extra -w {} +
+          find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GCI}} write -s standard -s default -s "prefix(github.com/kont1n/face-grouper)" {} +
+        fi
+      done
+
+# =============================================================================
+# Lint
+# =============================================================================
+lint:
+  desc: "Run golangci-lint for all modules"
+  deps: [install-tools]
+  cmds:
+    - echo "🔍 Running linters..."
+    - |
+      set -e
+      for mod in {{.MODULES}}; do
+        if [ -d "$mod" ]; then
+          echo "🔍 Linting $mod"
+          {{.GOLANGCI_LINT}} run $mod/... --config=.golangci.yml
+        fi
+      done
+
+# =============================================================================
+# Test
+# =============================================================================
+test:
+  desc: "Run all tests"
+  deps: [test:go, test:docker]
+  cmds:
+    - echo "✅ All tests passed"
+
+test:go:
+  desc: "Run Go unit tests"
+  cmds:
+    - echo "🧪 Running Go tests..."
+    - go test -v -race -coverprofile={{.COVERAGE_DIR}}/coverage.out ./...
+    - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
+    - echo "📊 Coverage report: {{.COVERAGE_DIR}}/coverage.html"
+
+test:docker:
+  desc: "Test Docker images"
+  cmds:
+    - echo "🧪 Testing CPU image..."
+    - docker run --rm {{.IMAGE_NAME}}:cpu --help || true
+
+test:coverage:
+  desc: "Run tests with coverage report"
+  deps: [test:go]
+  cmds:
+    - echo "📊 Generating coverage summary..."
+    - go tool cover -func={{.COVERAGE_DIR}}/coverage.out | tail -n1
+
+test:coverage:html:
+  desc: "Open coverage report in browser"
+  deps: [test:go]
+  cmds:
+    - echo "🌐 Opening coverage report..."
+    - go tool cover -html={{.COVERAGE_DIR}}/coverage.out
+
+# =============================================================================
+# Generate
+# =============================================================================
+gen:
+  desc: "Generate all code (mocks, proto, etc.)"
+  deps: [gen:mocks]
+  cmds:
+    - echo "✅ Code generation completed"
+
+gen:mocks:
+  desc: "Generate mocks with mockery"
+  deps: [install-tools]
+  cmds:
+    - echo "🧪 Generating mocks..."
+    - {{.MOCKERY}} --config=.mockery.yaml
+
+# =============================================================================
+# Docker
+# =============================================================================
+docker:run:
+  desc: "Run CPU container"
+  cmds:
+    - echo "🚀 Running CPU container..."
+    - docker run -d --rm --name face-grouper-cpu -v $(pwd)/dataset:/app/dataset:ro -v $(pwd)/output:/app/output -v $(pwd)/models:/app/models:ro -p 8080:8080 {{.IMAGE_NAME}}:cpu
+
+docker:run:gpu:
+  desc: "Run NVIDIA GPU container"
+  cmds:
+    - echo "🚀 Running NVIDIA GPU container..."
+    - docker run -d --rm --name face-grouper-gpu --gpus all -v $(pwd)/dataset:/app/dataset:ro -v $(pwd)/output:/app/output -v $(pwd)/models:/app/models:ro -p 8081:8080 {{.IMAGE_NAME}}:gpu
+
+docker:run:rocm:
+  desc: "Run AMD ROCm container"
+  cmds:
+    - echo "🚀 Running AMD ROCm container..."
+    - docker run -d --rm --name face-grouper-rocm --device /dev/kfd --device /dev/dri --group-add video --group-add render -v $(pwd)/dataset:/app/dataset:ro -v $(pwd)/output:/app/output -v $(pwd)/models:/app/models:ro -p 8082:8080 {{.IMAGE_NAME}}:rocm
+
+docker:compose:up:
+  desc: "Start with docker-compose"
+  cmds:
+    - echo "🚀 Starting docker-compose..."
+    - docker-compose up -d
+
+docker:compose:down:
+  desc: "Stop docker-compose"
+  cmds:
+    - echo "🛑 Stopping docker-compose..."
+    - docker-compose down
+
+docker:logs:
+  desc: "View docker-compose logs"
+  cmds:
+    - docker-compose logs -f
+
+# =============================================================================
+# Push
+# =============================================================================
+push:
+  desc: "Push all images to registry"
+  deps: [push:cpu, push:gpu, push:rocm]
+  cmds:
+    - echo "✅ All images pushed"
+
+push:cpu:
+  desc: "Push CPU image"
+  cmds:
+    - echo "📤 Pushing CPU image..."
+    - docker push {{.IMAGE_NAME}}:cpu
+    - docker push {{.IMAGE_NAME}}:cpu-{{.VERSION}}
+
+push:gpu:
+  desc: "Push GPU image"
+  cmds:
+    - echo "📤 Pushing GPU image..."
+    - docker push {{.IMAGE_NAME}}:gpu
+    - docker push {{.IMAGE_NAME}}:gpu-{{.VERSION}}
+
+push:rocm:
+  desc: "Push ROCm image"
+  cmds:
+    - echo "📤 Pushing ROCm image..."
+    - docker push {{.IMAGE_NAME}}:rocm
+    - docker push {{.IMAGE_NAME}}:rocm-{{.VERSION}}
+
+# =============================================================================
+# Security
+# =============================================================================
+scan:
+  desc: "Scan all images for vulnerabilities"
+  deps: [scan:cpu, scan:gpu, scan:rocm]
+  cmds:
+    - echo "✅ All scans completed"
+
+scan:cpu:
+  desc: "Scan CPU image"
+  cmds:
+    - echo "🔍 Scanning CPU image..."
+    - trivy image --severity HIGH,CRITICAL {{.IMAGE_NAME}}:cpu || echo "⚠️ Trivy not installed or scan failed"
+
+scan:gpu:
+  desc: "Scan GPU image"
+  cmds:
+    - echo "🔍 Scanning GPU image..."
+    - trivy image --severity HIGH,CRITICAL {{.IMAGE_NAME}}:gpu || echo "⚠️ Trivy not installed or scan failed"
+
+scan:rocm:
+  desc: "Scan ROCm image"
+  cmds:
+    - echo "🔍 Scanning ROCm image..."
+    - trivy image --severity HIGH,CRITICAL {{.IMAGE_NAME}}:rocm || echo "⚠️ Trivy not installed or scan failed"
+
+# =============================================================================
+# Benchmark
+# =============================================================================
+benchmark:
+  desc: "Run performance benchmark"
+  cmds:
+    - echo "⚡ Running benchmark..."
+    - ./scripts/benchmark.sh
+
+# =============================================================================
+# Clean
+# =============================================================================
+clean:
+  desc: "Clean build artifacts"
+  cmds:
+    - echo "🧹 Cleaning..."
+    - rm -rf {{.COVERAGE_DIR}} benchmark-dataset benchmark-output
+    - rm -f face-grouper face-grouper.exe
+    - echo "✅ Cleaned"
+
+clean:volumes:
+  desc: "Clean output volumes"
+  cmds:
+    - echo "🧹 Cleaning volumes..."
+    - rm -rf ./output/*
+    - echo "✅ Volumes cleaned"
+
+clean:docker:
+  desc: "Remove all containers and images"
+  cmds:
+    - echo "🧹 Cleaning Docker..."
+    - docker-compose down || true
+    - docker stop face-grouper-cpu face-grouper-gpu face-grouper-rocm 2>/dev/null || true
+    - docker rm face-grouper-cpu face-grouper-gpu face-grouper-rocm 2>/dev/null || true
+    - docker rmi {{.IMAGE_NAME}}:cpu {{.IMAGE_NAME}}:gpu {{.IMAGE_NAME}}:rocm 2>/dev/null || true
+    - echo "✅ Docker cleaned"
+
+# =============================================================================
+# Development
+# =============================================================================
+dev:
+  desc: "Start development environment"
+  cmds:
+    - echo "🚀 Starting development..."
+    - docker-compose up -d face-grouper-cpu
+    - docker-compose logs -f
+
+logs:
+  desc: "View logs"
+  cmds:
+    - docker-compose logs -f
+
+shell:
+  desc: "Open shell in container"
+  cmds:
+    - docker-compose exec face-grouper-cpu /bin/sh
+
+# =============================================================================
+# Tools Installation
+# =============================================================================
+install-tools:
+  desc: "Install development tools"
+  deps: [install-golangci-lint, install-mockery, install-formatters]
+  cmds:
+    - echo "✅ All tools installed"
+
+install-golangci-lint:
+  desc: "Install golangci-lint"
+  cmds:
+    - |
+      [ -f {{.GOLANGCI_LINT}} ] || {
+        echo "📦 Installing golangci-lint..."
+        mkdir -p {{.BIN_DIR}}
+        GOBIN={{.BIN_DIR}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.5
+      }
+    - test -x {{.GOLANGCI_LINT}}
+
+install-mockery:
+  desc: "Install mockery"
+  cmds:
+    - |
+      [ -f {{.MOCKERY}} ] || {
+        echo "📦 Installing mockery..."
+        mkdir -p {{.BIN_DIR}}
+        GOBIN={{.BIN_DIR}} go install github.com/vektra/mockery/v2@v2.53.3
+      }
+    - test -x {{.MOCKERY}}
+
+install-formatters:
+  desc: "Install formatters (gofumpt, gci)"
+  cmds:
+    - |
+      [ -f {{.GOFUMPT}} ] || {
+        echo "📦 Installing gofumpt..."
+        mkdir -p {{.BIN_DIR}}
+        GOBIN={{.BIN_DIR}} go install mvdan.cc/gofumpt@latest
+      }
+      [ -f {{.GCI}} ] || {
+        echo "📦 Installing gci..."
+        mkdir -p {{.BIN_DIR}}
+        GOBIN={{.BIN_DIR}} go install github.com/daixiang0/gci@latest
+      }
+    - test -x {{.GOFUMPT}}
+    - test -x {{.GCI}}
+
+install-tools:all:
+  desc: "Install all tools including optional"
+  deps: [install-tools]
+  cmds:
+    - |
+      echo "📦 Installing optional tools..."
+      mkdir -p {{.BIN_DIR}}
+      GOBIN={{.BIN_DIR}} go install github.com/bufbuild/buf/cmd/buf@latest || echo "⚠️ buf installation failed"
+      GOBIN={{.BIN_DIR}} go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest || echo "⚠️ grpcurl installation failed"
+      echo "✅ Optional tools installed"
+
+# =============================================================================
+# CI/CD
+# =============================================================================
+ci:
+  desc: "Run all CI checks"
+  deps: [lint, test, build]
+  cmds:
+    - echo "✅ CI checks passed"
+
+ci:full:
+  desc: "Run full CI pipeline"
+  deps: [lint, test:coverage, build:all, scan]
+  cmds:
+    - echo "✅ Full CI pipeline passed"

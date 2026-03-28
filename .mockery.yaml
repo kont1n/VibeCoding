@@ -1,0 +1,82 @@
+# =============================================================================
+# Face Grouper - Mockery Configuration
+# =============================================================================
+# Documentation: https://vektra.github.io/mockery/latest/
+# =============================================================================
+
+# Generate mocks with expecter
+with-expecter: true
+
+# Mock name format
+mockname: "{{.InterfaceName}}Mock"
+
+# Filename format
+filename: "{{.InterfaceName}}_mock.go"
+
+# Output directory
+dir: "{{.InterfaceDir}}/mocks"
+
+# Package name for mocks
+package: mocks
+
+# Include auto-generated header
+boilerplate-file: ""
+
+# Skip existing files
+skip-exist: true
+
+# Verbose output
+verbose: true
+
+# Log level
+log-level: info
+
+# Packages to generate mocks for
+packages:
+  # Service layer mocks
+  github.com/kont1n/face-grouper/internal/service/scan:
+    interfaces:
+      ScanService:
+        config:
+          dir: "mocks"
+          package: mocks
+  
+  github.com/kont1n/face-grouper/internal/service/extraction:
+    interfaces:
+      ExtractionService:
+        config:
+          dir: "mocks"
+          package: mocks
+  
+  github.com/kont1n/face-grouper/internal/service/clustering:
+    interfaces:
+      ClusterService:
+        config:
+          dir: "mocks"
+          package: mocks
+  
+  github.com/kont1n/face-grouper/internal/service/organization:
+    interfaces:
+      OrganizeService:
+        config:
+          dir: "mocks"
+          package: mocks
+  
+  # Repository layer mocks
+  github.com/kont1n/face-grouper/internal/repository/filesystem:
+    interfaces:
+      ScannerRepository:
+        config:
+          dir: "mocks"
+          package: mocks
+  
+  # API layer mocks
+  github.com/kont1n/face-grouper/internal/api/cli:
+    interfaces:
+      ScanService:
+        ExtractionService:
+        ClusterService:
+        OrganizeService:
+        config:
+          dir: "mocks"
+          package: mocks
