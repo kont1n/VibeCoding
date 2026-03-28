@@ -2,7 +2,7 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "internal/query"
-    schema: "internal/database/migrations"
+    schema: "internal/database/postgres/schema.sql"
     gen:
       go:
         package: "db"
@@ -11,65 +11,27 @@ sql:
         
         # Code generation options
         emit_json_tags: true
-        emit_prepared_queries: true
-        emit_interface: true
+        emit_prepared_queries: false
+        emit_interface: false
         emit_exact_table_names: false
         emit_empty_slices: true
-        emit_result_struct_pointers: false
-        emit_params_struct_pointers: false
-        emit_methods_with_db_argument: false
         
         # Output file options
         output_files_suffix: ".sql.go"
         
         # Type overrides
         overrides:
-          # UUID type
           - db_type: "uuid"
             go_type: "github.com/google/uuid.UUID"
-            go_type_import: "github.com/google/uuid"
           
-          # Timestamp with timezone
           - db_type: "timestamptz"
             go_type: "time.Time"
           
-          # JSONB type
+          - db_type: "timestamp"
+            go_type: "time.Time"
+          
           - db_type: "jsonb"
             go_type: "encoding/json.RawMessage"
-            go_type_import: "encoding/json"
           
-          # pgvector type
           - db_type: "vector"
             go_type: "github.com/pgvector/pgvector-go.Vector"
-            go_type_import: "github.com/pgvector/pgvector-go"
-          
-          # Nullable types
-          - db_type: "text"
-            go_type: "sql.NullString"
-            nullable: true
-            go_type_import: "database/sql"
-          
-          - db_type: "int4"
-            go_type: "sql.NullInt32"
-            nullable: true
-            go_type_import: "database/sql"
-          
-          - db_type: "int8"
-            go_type: "sql.NullInt64"
-            nullable: true
-            go_type_import: "database/sql"
-          
-          - db_type: "float4"
-            go_type: "sql.NullFloat64"
-            nullable: true
-            go_type_import: "database/sql"
-          
-          - db_type: "float8"
-            go_type: "sql.NullFloat64"
-            nullable: true
-            go_type_import: "database/sql"
-          
-          - db_type: "bool"
-            go_type: "sql.NullBool"
-            nullable: true
-            go_type_import: "database/sql"

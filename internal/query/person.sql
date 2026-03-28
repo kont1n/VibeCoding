@@ -15,12 +15,9 @@ LIMIT 1;
 
 -- name: ListPersons :many
 SELECT * FROM persons
-ORDER BY 
-    CASE WHEN $2 = 'name' THEN name END ASC,
-    CASE WHEN $2 = 'face_count' THEN face_count END DESC,
-    CASE WHEN $2 = 'created_at' THEN created_at END DESC
-OFFSET $3
-LIMIT $4;
+ORDER BY created_at DESC
+OFFSET $1
+LIMIT $2;
 
 -- name: UpdatePerson :one
 UPDATE persons

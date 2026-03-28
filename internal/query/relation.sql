@@ -3,11 +3,6 @@ INSERT INTO person_relations (person1_id, person2_id, similarity)
 VALUES ($1, $2, $3)
 ON CONFLICT (person1_id, person2_id) DO NOTHING;
 
--- name: BatchCreatePersonRelations :exec
-INSERT INTO person_relations (person1_id, person2_id, similarity)
-SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::float4[])
-ON CONFLICT (person1_id, person2_id) DO NOTHING;
-
 -- name: GetPersonRelations :many
 SELECT 
     pr.person1_id,

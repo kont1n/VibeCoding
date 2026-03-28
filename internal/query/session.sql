@@ -29,7 +29,6 @@ LIMIT 1;
 
 -- name: ListProcessingSessions :many
 SELECT * FROM processing_sessions
-ORDER BY created_at DESC
 OFFSET $1
 LIMIT $2;
 
