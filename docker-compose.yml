@@ -2,6 +2,7 @@
 # Face Grouper - Docker Compose
 # =============================================================================
 # Easy deployment for CPU and GPU versions
+# Documentation: docs/DOCKER.md
 # =============================================================================
 
 version: '3.8'

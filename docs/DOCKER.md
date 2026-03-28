@@ -2,6 +2,8 @@
 
 Complete guide for deploying Face Grouper using Docker.
 
+**Main Documentation:** [README.md](README.md)
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

@@ -20,9 +20,11 @@
 | **Provider** | Default | CUDA | ROCm |
 
 **Quick Links:**
-- [Docker Deployment](DOCKER.md)
-- [Quick Start](QUICKSTART.md)
-- [GPU Setup](#gpu-support)
+- [Docker Deployment](docs/DOCKER.md)
+- [Quick Start](docs/QUICKSTART.md)
+- [Download Models](docs/DOWNLOAD_MODELS.md)
+- [Documentation Index](docs/README.md)
+- [GPU Setup](docs/DOCKER.md#gpu-support)
 
 ## Архитектура
 
@@ -503,6 +505,11 @@ face-grouper/
 │   │   ├── Dockerfile.nvidia  # NVIDIA GPU версия
 │   │   └── Dockerfile.rocm    # AMD ROCm версия
 │   └── compose/               # Docker Compose файлы
+├── docs/                      # Документация
+│   ├── README.md              # Индекс документации
+│   ├── DOCKER.md              # Docker руководство
+│   ├── QUICKSTART.md          # Быстрый старт
+│   └── DOWNLOAD_MODELS.md     # Загрузка моделей
 ├── internal/                  # Внутренние пакеты
 │   ├── api/                   # API handlers
 │   ├── app/                   # Приложение + DI

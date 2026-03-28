@@ -6,6 +6,7 @@ version: '3'
 # Cross-platform task runner (replacement for Makefile)
 # Install: https://taskfile.dev/installation/
 # Usage: task --list
+# Documentation: docs/README.md
 # =============================================================================
 
 # Глобальные переменные
