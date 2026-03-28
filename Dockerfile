@@ -1,0 +1,126 @@
+# =============================================================================
+# Face Grouper - CPU Docker Image
+# =============================================================================
+# Multi-stage build for minimal runtime image
+# Uses Debian bookworm-slim for small image size
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Builder
+# -----------------------------------------------------------------------------
+FROM golang:1.25-bookworm AS builder
+
+# Set working directory
+WORKDIR /build
+
+# Install build dependencies for CGO (required by onnxruntime_go)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy go.mod and go.sum for dependency caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Download ONNX Runtime CPU library
+ARG ONNXRUNTIME_VERSION=1.23.0
+RUN curl -L -o /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    && tar -xzf /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
+    && mv /opt/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
+    && rm /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz
+
+# Set environment variables for CGO
+ENV CGO_ENABLED=1
+ENV CGO_CFLAGS="-I/opt/onnxruntime/include"
+ENV CGO_LDFLAGS="-L/opt/onnxruntime/lib -lonnxruntime"
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib
+
+# Build the application with optimizations
+RUN go build -ldflags="-s -w" -trimpath -o face-grouper ./cmd
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime
+# -----------------------------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy ONNX Runtime from builder
+COPY --from=builder /opt/onnxruntime /opt/onnxruntime
+
+# Set library path for ONNX Runtime
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:${LD_LIBRARY_PATH}
+
+# Copy the binary from builder
+COPY --from=builder /build/face-grouper .
+
+# Copy configuration template
+COPY --from=builder /build/.env.example .env
+
+# Create directories for data (will be mounted as volumes)
+RUN mkdir -p /app/dataset /app/output /app/models \
+    && chmod 755 /app/dataset /app/output /app/models
+
+# Set default environment variables
+ENV INPUT_DIR=/app/dataset
+ENV OUTPUT_DIR=/app/output
+ENV MODELS_DIR=/app/models
+ENV LOG_LEVEL=info
+ENV LOG_JSON=false
+
+# Expose web UI port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Set entrypoint and default command
+ENTRYPOINT ["./face-grouper"]
+CMD ["--serve"]
+
+# -----------------------------------------------------------------------------
+# Usage:
+# -----------------------------------------------------------------------------
+# Build:
+#   docker build -t face-grouper:cpu -f Dockerfile .
+#
+# Run (CPU):
+#   docker run -d --name face-grouper \
+#     -v $(pwd)/dataset:/app/dataset \
+#     -v $(pwd)/output:/app/output \
+#     -v $(pwd)/models:/app/models \
+#     -p 8080:8080 \
+#     face-grouper:cpu
+#
+# Run with custom config:
+#   docker run -d --name face-grouper \
+#     -v $(pwd)/dataset:/app/dataset \
+#     -v $(pwd)/output:/app/output \
+#     -v $(pwd)/models:/app/models \
+#     -e GPU_ENABLED=0 \
+#     -e EXTRACT_WORKERS=4 \
+#     -p 8080:8080 \
+#     face-grouper:cpu
+#
+# View logs:
+#   docker logs -f face-grouper
+#
+# Stop:
+#   docker stop face-grouper
+# -----------------------------------------------------------------------------

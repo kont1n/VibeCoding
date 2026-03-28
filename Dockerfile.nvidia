@@ -1,0 +1,148 @@
+# =============================================================================
+# Face Grouper - NVIDIA GPU Docker Image
+# =============================================================================
+# Multi-stage build for minimal runtime image
+# Uses NVIDIA CUDA 12.2 base image with cuDNN support
+# Requires NVIDIA Container Toolkit on the host
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Builder
+# -----------------------------------------------------------------------------
+FROM golang:1.25-bookworm AS builder
+
+# Set working directory
+WORKDIR /build
+
+# Install build dependencies for CGO (required by onnxruntime_go)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy go.mod and go.sum for dependency caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Download ONNX Runtime GPU library
+ARG ONNXRUNTIME_VERSION=1.23.0
+RUN curl -L -o /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz \
+    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz \
+    && tar -xzf /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
+    && mv /opt/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
+    && rm /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz
+
+# Set environment variables for CGO
+ENV CGO_ENABLED=1
+ENV CGO_CFLAGS="-I/opt/onnxruntime/include"
+ENV CGO_LDFLAGS="-L/opt/onnxruntime/lib -lonnxruntime"
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib
+
+# Build the application with optimizations
+RUN go build -ldflags="-s -w" -trimpath -o face-grouper ./cmd
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime (NVIDIA CUDA base)
+# -----------------------------------------------------------------------------
+FROM nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 AS runtime
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy ONNX Runtime GPU from builder
+COPY --from=builder /opt/onnxruntime /opt/onnxruntime
+
+# Set library path for ONNX Runtime and CUDA
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+
+# Copy the binary from builder
+COPY --from=builder /build/face-grouper .
+
+# Copy configuration template
+COPY --from=builder /build/.env.example .env
+
+# Create directories for data (will be mounted as volumes)
+RUN mkdir -p /app/dataset /app/output /app/models \
+    && chmod 755 /app/dataset /app/output /app/models
+
+# Set default environment variables
+ENV INPUT_DIR=/app/dataset
+ENV OUTPUT_DIR=/app/output
+ENV MODELS_DIR=/app/models
+ENV GPU_ENABLED=1
+ENV GPU_DEVICE_ID=0
+ENV PROVIDER_PRIORITY=cuda
+ENV LOG_LEVEL=info
+ENV LOG_JSON=false
+
+# NVIDIA GPU visibility
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+# Expose web UI port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Set entrypoint and default command
+ENTRYPOINT ["./face-grouper"]
+CMD ["--serve"]
+
+# -----------------------------------------------------------------------------
+# Requirements:
+# - NVIDIA GPU with Compute Capability 5.0+
+# - NVIDIA Driver 450.80.02+
+# - NVIDIA Container Toolkit installed on host
+#
+# Installation (NVIDIA Container Toolkit):
+#   distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+#   curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+#   curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+#     sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+#   sudo apt-get update
+#   sudo apt-get install -y nvidia-container-toolkit
+#   sudo systemctl restart docker
+#
+# Usage:
+#   Build:
+#     docker build -t face-grouper:gpu -f Dockerfile.nvidia .
+#
+#   Run (GPU):
+#     docker run -d --gpus all --name face-grouper-gpu \
+#       -v $(pwd)/dataset:/app/dataset \
+#       -v $(pwd)/output:/app/output \
+#       -v $(pwd)/models:/app/models \
+#       -p 8080:8080 \
+#       face-grouper:gpu
+#
+#   Run with specific GPU:
+#     docker run -d --gpus '"device=0"' --name face-grouper-gpu \
+#       -v $(pwd)/dataset:/app/dataset \
+#       -v $(pwd)/output:/app/output \
+#       -v $(pwd)/models:/app/models \
+#       -p 8080:8080 \
+#       face-grouper:gpu
+#
+#   View logs:
+#     docker logs -f face-grouper-gpu
+#
+#   Monitor GPU usage:
+#     watch -n 1 nvidia-smi
+#
+#   Stop:
+#     docker stop face-grouper-gpu
+# -----------------------------------------------------------------------------

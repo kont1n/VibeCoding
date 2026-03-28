@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+*.exe
+face-grouper
+face-grouper.exe
+build/
+dist/
+
+# Output and runtime data
+output/
+*.log
+*.json
+!README.md
+
+# Development files
+.env
+.env.local
+.env.*.local
+*.md
+!README.md
+!DOCKER.md
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Test files
+*_test.go
+test/
+tests/
+
+# Scripts (not needed in container)
+scripts/
+
+# Documentation
+docs/
+*.pdf
+*.docx
+
+# Models (will be mounted as volume)
+models/*.onnx
+models/*.pt
+models/*.pth
+
+# Dataset (will be mounted as volume)
+dataset/*
+!dataset/.gitkeep
+
+# Runtime (will be mounted as volume)
+runtime/
+
+# Qwen
+.qwen/
