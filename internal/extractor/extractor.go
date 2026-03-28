@@ -10,8 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"gocv.io/x/gocv"
-
+	"github.com/kont1n/face-grouper/internal/imageutil"
 	"github.com/kont1n/face-grouper/internal/inference"
 	"github.com/kont1n/face-grouper/internal/models"
 )
@@ -195,29 +194,29 @@ func processImage(
 	recSize int,
 	cfg Config,
 ) ([]models.Face, error) {
-	img := gocv.IMRead(imagePath, gocv.IMReadColor)
-	if img.Empty() {
-		return nil, fmt.Errorf("cannot read image: %s", imagePath)
+	img, err := imageutil.LoadImage(imagePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read image: %s: %w", imagePath, err)
 	}
+	if img.Empty() {
+		return nil, fmt.Errorf("empty image: %s", imagePath)
+	}
+	defer img.Close()
 
 	if cfg.MaxDim > 0 {
-		h := img.Rows()
-		w := img.Cols()
-		maxSide := h
-		if w > maxSide {
-			maxSide = w
+		maxSide := img.Height
+		if img.Width > maxSide {
+			maxSide = img.Width
 		}
 		if maxSide > cfg.MaxDim {
 			scale := float64(cfg.MaxDim) / float64(maxSide)
-			newW := int(float64(w) * scale)
-			newH := int(float64(h) * scale)
-			resized := gocv.NewMat()
-			gocv.Resize(img, &resized, image.Point{X: newW, Y: newH}, 0, 0, gocv.InterpolationArea)
+			newW := int(float64(img.Width) * scale)
+			newH := int(float64(img.Height) * scale)
+			resized := imageutil.Resize(img, newW, newH)
 			img.Close()
 			img = resized
 		}
 	}
-	defer img.Close()
 
 	dets, err := detectWithPool(detPool, img)
 	if err != nil {
@@ -227,13 +226,16 @@ func processImage(
 		return nil, nil
 	}
 
-	aligned := make([]gocv.Mat, len(dets))
+	// Align faces
+	aligned := make([]*imageutil.Image, len(dets))
 	for i, d := range dets {
 		aligned[i] = inference.NormCrop(img, d.Kps, recSize)
 	}
 	defer func() {
 		for _, a := range aligned {
-			a.Close()
+			if a != nil {
+				a.Close()
+			}
 		}
 	}()
 
@@ -270,9 +272,9 @@ func processImage(
 
 // saveThumbnail crops a face region with 25% padding, resizes to 160x160,
 // and saves as JPEG.
-func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, faceIdx int, thumbDir string) string {
-	h := img.Rows()
-	w := img.Cols()
+func saveThumbnail(img *imageutil.Image, det inference.Detection, imagePath string, faceIdx int, thumbDir string) string {
+	h := img.Height
+	w := img.Width
 
 	x1 := int(det.X1)
 	y1 := int(det.Y1)
@@ -292,11 +294,13 @@ func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, face
 	}
 
 	crop := img.Region(image.Rect(cx1, cy1, cx2, cy2))
+	if crop == nil {
+		return ""
+	}
 	defer crop.Close()
 
-	resized := gocv.NewMat()
+	resized := imageutil.Resize(crop, 160, 160)
 	defer resized.Close()
-	gocv.Resize(crop, &resized, image.Point{X: 160, Y: 160}, 0, 0, gocv.InterpolationLinear)
 
 	base := filepath.Base(imagePath)
 	ext := filepath.Ext(base)
@@ -304,13 +308,13 @@ func saveThumbnail(img gocv.Mat, det inference.Detection, imagePath string, face
 	thumbName := fmt.Sprintf("%s_%s_face_%d.jpg", name, shortPathHash(imagePath), faceIdx)
 	thumbPath := filepath.Join(thumbDir, thumbName)
 
-	if ok := gocv.IMWriteWithParams(thumbPath, resized, []int{gocv.IMWriteJpegQuality, 90}); !ok {
+	if err := imageutil.SaveJPEG(resized, thumbPath, 90); err != nil {
 		return ""
 	}
 	return thumbPath
 }
 
-func detectWithPool(detPool chan *inference.Detector, img gocv.Mat) ([]inference.Detection, error) {
+func detectWithPool(detPool chan *inference.Detector, img *imageutil.Image) ([]inference.Detection, error) {
 	det := <-detPool
 	defer func() { detPool <- det }()
 	return det.Detect(img)
@@ -341,7 +345,7 @@ func (r *recognizeRequest) resolve(idx int, embedding []float64, err error) {
 }
 
 type recognizeItem struct {
-	mat gocv.Mat
+	img *imageutil.Image
 	req *recognizeRequest
 	idx int
 }
@@ -378,17 +382,17 @@ func newRecognizerBatcher(recPool chan *inference.Recognizer, workers, batchSize
 	return b
 }
 
-func (b *recognizerBatcher) Infer(mats []gocv.Mat) ([][]float64, error) {
-	if len(mats) == 0 {
+func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float64, error) {
+	if len(imgs) == 0 {
 		return nil, nil
 	}
 	req := &recognizeRequest{
 		done:       make(chan struct{}),
-		embeddings: make([][]float64, len(mats)),
-		remaining:  len(mats),
+		embeddings: make([][]float64, len(imgs)),
+		remaining:  len(imgs),
 	}
-	for i, mat := range mats {
-		b.items <- recognizeItem{mat: mat, req: req, idx: i}
+	for i, img := range imgs {
+		b.items <- recognizeItem{img: img, req: req, idx: i}
 	}
 	<-req.done
 	if req.err != nil {
@@ -431,13 +435,23 @@ func (b *recognizerBatcher) runWorker() {
 			}
 		}
 
-		mats := make([]gocv.Mat, len(batch))
+		imgs := make([]*imageutil.Image, len(batch))
 		for i, item := range batch {
-			mats[i] = item.mat
+			imgs[i] = item.img
 		}
 
-		rec := <-b.recPool
-		embeddings, err := rec.GetEmbeddings(mats)
+		rec, ok := <-b.recPool
+		if !ok {
+			for _, item := range batch {
+				item.req.resolve(item.idx, nil, fmt.Errorf("recognizer pool closed"))
+			}
+			if channelClosed {
+				return
+			}
+			continue
+		}
+
+		embeddings, err := rec.GetEmbeddings(imgs)
 		b.recPool <- rec
 
 		if err != nil {

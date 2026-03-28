@@ -2,11 +2,10 @@ package inference
 
 import (
 	"fmt"
-	"image"
 	"math"
 
 	ort "github.com/yalue/onnxruntime_go"
-	"gocv.io/x/gocv"
+	"github.com/kont1n/face-grouper/internal/imageutil"
 )
 
 // Recognizer wraps an ArcFace ONNX model for face embedding extraction.
@@ -72,39 +71,51 @@ func NewRecognizer(cfg RecognizerConfig) (*Recognizer, error) {
 
 // GetEmbeddings extracts L2-normalized 512-d embeddings from aligned face images.
 // Each face must be an aligned BGR image of size inputSize x inputSize.
-func (r *Recognizer) GetEmbeddings(faces []gocv.Mat) ([][]float64, error) {
+func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error) {
 	if len(faces) == 0 {
 		return nil, nil
 	}
 
-	batchSize := int64(len(faces))
-	h := int64(r.inputSize)
-	w := int64(r.inputSize)
-	blobMat := gocv.NewMat()
-	defer blobMat.Close()
+	batchSize := len(faces)
+	h := r.inputSize
+	w := r.inputSize
 
-	gocv.BlobFromImages(
-		faces,
-		&blobMat,
-		1.0/float64(r.inputStd),
-		image.Point{X: r.inputSize, Y: r.inputSize},
-		gocv.NewScalar(float64(r.inputMean), float64(r.inputMean), float64(r.inputMean), 0),
-		true,
-		false,
-		gocv.MatTypeCV32F,
-	)
-	if blobMat.Empty() {
-		return nil, fmt.Errorf("recognizer blob prep: empty blob")
+	// Build blob manually from images
+	blob := make([]float32, batchSize*3*h*w)
+	invStd := 1.0 / float64(r.inputStd)
+	mean := float64(r.inputMean)
+
+	for b, face := range faces {
+		if face.Empty() {
+			return nil, fmt.Errorf("empty face image at index %d", b)
+		}
+		// Resize if needed
+		img := face
+		if face.Width != r.inputSize || face.Height != r.inputSize {
+			img = imageutil.Resize(face, r.inputSize, r.inputSize)
+			defer img.Close()
+		}
+
+		// Convert to NCHW blob with normalization
+		// ArcFace expects RGB order (not BGR!)
+		// NCHW format: [batch, channel, height, width]
+		channelSize := h * w
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				srcIdx := (y*img.Width + x) * 3
+				pos := y*w + x
+
+				// R channel (channel 0) - note: img.Data is BGR, so [srcIdx+2] is R
+				blob[b*3*channelSize+pos] = float32((float64(img.Data[srcIdx+2]) - mean) * invStd)
+				// G channel (channel 1)
+				blob[b*3*channelSize+channelSize+pos] = float32((float64(img.Data[srcIdx+1]) - mean) * invStd)
+				// B channel (channel 2)
+				blob[b*3*channelSize+channelSize*2+pos] = float32((float64(img.Data[srcIdx]) - mean) * invStd)
+			}
+		}
 	}
 
-	blobPtr, err := blobMat.DataPtrFloat32()
-	if err != nil {
-		return nil, fmt.Errorf("recognizer blob prep: %w", err)
-	}
-	blob := make([]float32, len(blobPtr))
-	copy(blob, blobPtr)
-
-	inputShape := ort.NewShape(batchSize, 3, h, w)
+	inputShape := ort.NewShape(int64(batchSize), int64(3), int64(h), int64(w))
 	inputTensor, err := ort.NewTensor(inputShape, blob)
 	if err != nil {
 		return nil, fmt.Errorf("create recognizer input tensor: %w", err)

@@ -1,6 +1,6 @@
 # Face Grouping Service
 
-Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, алгоритмический выбор аватара (без LM Studio) и веб-интерфейс для просмотра результатов.
+Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python и OpenCV. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, алгоритмический выбор аватара и веб-интерфейс для просмотра результатов.
 
 ## Как это работает
 
@@ -22,7 +22,7 @@ flowchart LR
 
 1. **Сканирование** — Go обходит входную директорию и собирает все `.jpeg`, `.jpg`, `.png` файлы
 2. **Детекция лиц** — SCRFD модель (`det_10g.onnx`) через ONNX Runtime Go биндинги: letterbox preprocessing (640x640), 3-уровневый FPN (strides 8/16/32), декодирование bbox + keypoints, NMS (IoU 0.4)
-3. **Выравнивание лиц** — similarity transform (Umeyama algorithm) по 5 ключевым точкам, WarpAffine до 112x112 через gocv/OpenCV
+3. **Выравнивание лиц** — similarity transform (Umeyama algorithm) по 5 ключевым точкам, WarpAffine до 112x112 на чистом Go (билинейная интерполяция)
 4. **Извлечение embeddings** — ArcFace модель (`w600k_r50.onnx`): нормализация (mean=127.5, std=127.5), batch inference, L2-нормализация 512-мерных векторов
 5. **Генерация миниатюр** — для каждого обнаруженного лица вырезается crop с паддингом 25%, масштабируется до 160x160 и сохраняется как JPEG (quality 90)
 6. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
@@ -38,10 +38,11 @@ flowchart LR
 | Компонент | Версия |
 |-----------|--------|
 | Go | 1.24+ |
-| OpenCV | 4.12+ |
 | ONNX Runtime | 1.24+ |
 | ОС | Windows / Linux / macOS |
 | GPU (опционально) | NVIDIA с поддержкой CUDA |
+
+> **Примечание:** С версии 0.2 проект использует чистый Go для обработки изображений и больше не требует OpenCV/gocv.
 
 На **Windows** для создания символических ссылок необходим Developer Mode или запуск от имени администратора.
 
@@ -59,71 +60,75 @@ flowchart LR
 
 Поместите библиотеку в PATH или укажите путь через `--ort-lib`.
 
-### 2. OpenCV (для gocv)
+### 2. ONNX-модели InsightFace
 
-**Windows (MSYS2)**:
-```powershell
-winget install MSYS2.MSYS2
-C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
-C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-opencv mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-qt6-base"
-```
-
-> Важно: не используйте OpenCV из Chocolatey для сборки с `gocv` — обычно это MSVC-сборка и она конфликтует с MinGW/CGO toolchain.
-
-**Linux (Ubuntu/Debian)**:
-```bash
-sudo apt install libopencv-dev
-```
-
-**macOS (Homebrew)**:
-```bash
-brew install opencv
-```
-
-### 3. ONNX-модели InsightFace
-
-Скачайте модели из [InsightFace model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo) (пакет `buffalo_l`):
+Скачайте модели из [InsightFace model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l) (пакет `buffalo_l`):
 
 - `det_10g.onnx` (~17 MB) — SCRFD детектор лиц
 - `w600k_r50.onnx` (~174 MB) — ArcFace распознавание лиц
 
+**Способ 1: Вручную через браузер**
+1. Откройте https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l
+2. Скачайте `det_10g.onnx` и `w600k_r50.onnx`
+3. Поместите в `./models/`
+
+**Способ 2: Через Python (рекомендуется)**
+```powershell
+py -m pip install huggingface_hub
+py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
+py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
+```
+
+**Способ 3: Скриптом проекта**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\download-models.ps1
+```
+
 Поместите оба файла в каталог `./models/` (или укажите путь через `--models-dir`).
 
-### 4. Сборка
+### 3. Сборка проекта
 
-**Windows (рекомендуется):**
+**Windows (простая сборка без MSYS2):**
+```powershell
+go build -o face-grouper.exe .
+```
+
+**Linux / macOS:**
+```bash
+go build -o face-grouper .
+```
+
+> **Примечание:** Для сборки больше не требуется MSYS2/OpenCV. Только Go компилятор.
+
+**Скрипт сборки (опционально):**
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-Дополнительно:
-- `-Msys2Bin "C:\msys64\ucrt64\bin"` — путь к MSYS2 toolchain (если не указан, авто-поиск: `ucrt64` -> `mingw64` -> `clang64`)
+Скрипт поддерживает параметры:
 - `-Output "face-grouper.exe"` — имя выходного файла
 - `-SkipClean` — не выполнять `go clean -cache`
 
-**Ручная сборка:**
-```bash
-# Linux / macOS
-CGO_ENABLED=1 go build -o face-grouper .
+### 4. GPU-запуск на Windows
 
-# Windows (MSYS2)
-CGO_ENABLED=1 CC=gcc CXX=g++ \
-  CGO_CFLAGS="$(pkg-config --cflags opencv4)" \
-  CGO_CXXFLAGS="$(pkg-config --cflags opencv4)" \
-  CGO_LDFLAGS="$(pkg-config --libs opencv4)" \
-  go build -tags customenv -o face-grouper.exe .
+Для GPU-запуска требуется:
+1. NVIDIA GPU с поддержкой CUDA
+2. Установленные драйверы CUDA
+3. ONNX Runtime GPU версия
+
+**Простой запуск:**
+```powershell
+# Скачать ONNX Runtime GPU и запустить
+.\face-grouper.exe --gpu --serve
 ```
 
-### 5. GPU-запуск на Windows (авто-подготовка)
+**Скрипт run-gpu.ps1 (опционально):**
 
 Скрипт `scripts/run-gpu.ps1` автоматически:
-- выбирает рабочий MSYS2 runtime для OpenCV;
-- ставит Qt runtime пакет (`qt6-base`), если его не хватает;
-- скачивает актуальный ONNX Runtime GPU в `./runtime/`;
-- при необходимости доустанавливает актуальные CUDA/cuDNN DLL через `pip`;
-- запускает `face-grouper.exe` с `--gpu`, `--ort-lib` и корректным `--models-dir`.
+- скачивает актуальный ONNX Runtime GPU в `./runtime/`
+- запускает `face-grouper.exe` с `--gpu` и корректным `--ort-lib`
 
-Полезные параметры скрипта: `-InputDir`, `-OutputDir`, `-ModelsDir`, `-OrtVersion`, `-Msys2Bin`, `-SkipNvidiaRuntimeInstall`, `-Serve`, `-GpuDetSessions`, `-GpuRecSessions`, `-EmbedBatchSize`, `-EmbedFlushMs`, `-AvatarUpdateThreshold`, `-IntraThreads`, `-InterThreads`.
+Полезные параметры скрипта: `-InputDir`, `-OutputDir`, `-ModelsDir`, `-OrtVersion`, `-Serve`, `-GpuDetSessions`, `-GpuRecSessions`, `-EmbedBatchSize`, `-EmbedFlushMs`, `-AvatarUpdateThreshold`, `-IntraThreads`, `-InterThreads`.
 
 ```powershell
 # Базовый GPU запуск
@@ -144,7 +149,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -InputDir .\photo
 ### Windows GPU (рекомендуется)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu.ps1 -Serve
+.\face-grouper.exe --gpu --serve
 ```
 
 ### Прямой запуск CLI
@@ -338,12 +343,16 @@ ONNX Runtime Go-биндинги для прямого запуска модел
 - **`ort.go`** — инициализация/финализация ONNX Runtime, загрузка shared library, создание сессий с CPU/CUDA провайдерами
 - **`detector.go`** — SCRFD детектор: letterbox resize, нормализация (mean=127.5, std=128.0), NCHW конвертация, декодирование anchor-based выходов по 3 уровням FPN, фильтрация по порогу
 - **`recognizer.go`** — ArcFace: нормализация (mean=127.5, std=127.5), batch inference, L2-нормализация 512-мерных эмбеддингов
-- **`align.go`** — Umeyama similarity transform по 5 facial landmarks, WarpAffine через gocv для выравнивания лица до 112x112
+- **`align.go`** — Umeyama similarity transform по 5 facial landmarks, WarpAffine на чистом Go (билинейная интерполяция) для выравнивания лица до 112x112
 - **`nms.go`** — greedy Non-Maximum Suppression с IoU threshold
+
+### `internal/imageutil` — обработка изображений на чистом Go
+
+- **`image.go`** — загрузка/сохранение JPEG, resize (билинейная интерполяция), blob conversion (NCHW), warp affine transform, crop
 
 ### `internal/extractor` — оркестрация extraction pipeline
 
-Worker pool из горутин, каждый worker: загрузка изображения (gocv) → опциональный downscale (`--max-dim`) → SCRFD детекция → alignment по keypoints → отправка aligned-лиц в межфайловый batcher распознавания (`--embed-batch-size`, `--embed-flush-ms`) → сохранение thumbnail (crop + resize 160x160, JPEG q90).
+Worker pool из горутин, каждый worker: загрузка изображения (чистый Go) → опциональный downscale (`--max-dim`) → SCRFD детекция → alignment по keypoints → отправка aligned-лиц в межфайловый batcher распознавания (`--embed-batch-size`, `--embed-flush-ms`) → сохранение thumbnail (crop + resize 160x160, JPEG q90).
 
 CPU-режим использует пул ONNX-сессий размером `workers`. GPU-режим использует отдельные пулы detector/recognizer сессий (`--gpu-det-sessions`, `--gpu-rec-sessions`) без глобальной блокировки inference.
 
@@ -372,20 +381,27 @@ CPU-режим использует пул ONNX-сессий размером `w
 
 Параметр `--threshold` контролирует строгость группировки:
 
-| Значение | Эффект |
-|----------|--------|
-| `0.3` | Агрессивная группировка, больше ложных совпадений |
-| `0.5` | Сбалансированный (по умолчанию) |
-| `0.7` | Строгая группировка, может разбить одного человека на несколько кластеров |
+| Значение | Эффект | Когда использовать |
+|----------|--------|-------------------|
+| `0.30-0.35` | Очень строгая группировка, минимум ложных совпадений | Когда на фото много разных людей |
+| `0.40-0.45` | Строгая группировка, баланс точности | Для смешанных наборов фото |
+| `0.50` | Сбалансированный (по умолчанию) | Универсальный вариант |
+| `0.60-0.70` | Агрессивная группировка, больше ложных совпадений | Когда на фото один человек |
 
-Рекомендуется начать с `0.5` и корректировать по результатам.
+> **Важно:** Для ArcFace/InsightFace модели типичные значения косинусного сходства:
+> - **Один человек:** 0.50-0.90
+> - **Разные люди:** 0.00-0.40
+>
+> Если все фото с одного мероприятия (один человек), используйте порог **0.35-0.40**.
+
+Рекомендуется начать с `0.50` и корректировать по результатам.
 
 ## Зависимости
 
 | Пакет | Назначение |
 |-------|-----------|
 | `github.com/yalue/onnxruntime_go` | Go-биндинги для ONNX Runtime (CPU/CUDA inference) |
-| `gocv.io/x/gocv` | Go-биндинги для OpenCV 4 (чтение изображений, resize, WarpAffine) |
+| `golang.org/x/image` | Обработка изображений на чистом Go (resize, decode/encode) |
 | `gonum.org/v1/gonum` | BLAS-ускоренное матричное перемножение для кластеризации embeddings |
 
 ## Лицензия

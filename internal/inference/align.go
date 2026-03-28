@@ -1,11 +1,9 @@
 package inference
 
 import (
-	"image"
-	"image/color"
 	"math"
 
-	"gocv.io/x/gocv"
+	"github.com/kont1n/face-grouper/internal/imageutil"
 )
 
 // Standard ArcFace destination landmarks for 112x112 image.
@@ -19,7 +17,7 @@ var arcfaceDst = [5][2]float64{
 
 // NormCrop aligns a face using 5 keypoints via similarity transform,
 // producing an imageSize x imageSize BGR image suitable for ArcFace.
-func NormCrop(img gocv.Mat, kps [5][2]float32, imageSize int) gocv.Mat {
+func NormCrop(img *imageutil.Image, kps [5][2]float32, imageSize int) *imageutil.Image {
 	ratio := float64(imageSize) / 112.0
 	dst := make([][2]float64, 5)
 	for i := range arcfaceDst {
@@ -35,20 +33,7 @@ func NormCrop(img gocv.Mat, kps [5][2]float32, imageSize int) gocv.Mat {
 
 	M := estimateSimilarityTransform(src, dst)
 
-	warpMat := gocv.NewMatWithSize(2, 3, gocv.MatTypeCV64F)
-	warpMat.SetDoubleAt(0, 0, M[0][0])
-	warpMat.SetDoubleAt(0, 1, M[0][1])
-	warpMat.SetDoubleAt(0, 2, M[0][2])
-	warpMat.SetDoubleAt(1, 0, M[1][0])
-	warpMat.SetDoubleAt(1, 1, M[1][1])
-	warpMat.SetDoubleAt(1, 2, M[1][2])
-
-	warped := gocv.NewMat()
-	gocv.WarpAffineWithParams(img, &warped, warpMat,
-		image.Point{X: imageSize, Y: imageSize},
-		gocv.InterpolationLinear, gocv.BorderConstant,
-		color.RGBA{0, 0, 0, 0})
-	warpMat.Close()
+	warped := imageutil.WarpAffine(img, M, imageSize, imageSize)
 
 	return warped
 }
@@ -85,6 +70,13 @@ func estimateSimilarityTransform(src, dst [][2]float64) [2][3]float64 {
 		srcVar += srcC[i][0]*srcC[i][0] + srcC[i][1]*srcC[i][1]
 	}
 	srcVar /= fn
+	if srcVar < 1e-10 {
+		// Source points are nearly identical; return identity transform
+		return [2][3]float64{
+			{1, 0, dstMean[0] - srcMean[0]},
+			{0, 1, dstMean[1] - srcMean[1]},
+		}
+	}
 
 	// Cross-covariance matrix (2x2): C = (1/n) * dst^T * src
 	var a, b, c, d float64
@@ -92,7 +84,7 @@ func estimateSimilarityTransform(src, dst [][2]float64) [2][3]float64 {
 		a += dstC[i][0] * srcC[i][0]
 		b += dstC[i][0] * srcC[i][1]
 		c += dstC[i][1] * srcC[i][0]
-		d += dstC[i][1] * srcC[i][1]
+		d += dstC[i][1] * srcC[i][0]
 	}
 	a /= fn
 	b /= fn

@@ -2,11 +2,10 @@ package inference
 
 import (
 	"fmt"
-	"image"
 	"sync"
 
 	ort "github.com/yalue/onnxruntime_go"
-	"gocv.io/x/gocv"
+	"github.com/kont1n/face-grouper/internal/imageutil"
 )
 
 // Detector wraps an SCRFD ONNX model for face detection.
@@ -111,11 +110,11 @@ func NewDetector(cfg DetectorConfig) (*Detector, error) {
 	return d, nil
 }
 
-// Detect runs face detection on a BGR gocv.Mat.
+// Detect runs face detection on an imageutil.Image.
 // Returns detections in original image coordinates.
-func (d *Detector) Detect(img gocv.Mat) ([]Detection, error) {
-	imgH := img.Rows()
-	imgW := img.Cols()
+func (d *Detector) Detect(img *imageutil.Image) ([]Detection, error) {
+	imgH := img.Height
+	imgW := img.Width
 	detW := int(d.inputW)
 	detH := int(d.inputH)
 
@@ -133,18 +132,26 @@ func (d *Detector) Detect(img gocv.Mat) ([]Detection, error) {
 	}
 	detScale := float32(newH) / float32(imgH)
 
-	resized := gocv.NewMat()
+	// Resize image
+	resized := imageutil.Resize(img, newW, newH)
 	defer resized.Close()
-	gocv.Resize(img, &resized, image.Point{X: newW, Y: newH}, 0, 0, gocv.InterpolationLinear)
 
-	// Paste resized image onto zero-padded canvas
-	detImg := gocv.NewMatWithSize(detH, detW, img.Type())
+	// Create canvas and paste resized image
+	detImg := imageutil.NewImage(detW, detH)
 	defer detImg.Close()
-	roi := detImg.Region(image.Rect(0, 0, newW, newH))
-	resized.CopyTo(&roi)
-	roi.Close()
 
-	blob, err := blobFromMatNCHW(detImg, 127.5, 128.0)
+	// Copy resized image to canvas (BGR format)
+	for y := 0; y < newH; y++ {
+		for x := 0; x < newW; x++ {
+			srcIdx := (y*newW + x) * 3
+			dstIdx := (y*detW + x) * 3
+			detImg.Data[dstIdx] = resized.Data[srcIdx]
+			detImg.Data[dstIdx+1] = resized.Data[srcIdx+1]
+			detImg.Data[dstIdx+2] = resized.Data[srcIdx+2]
+		}
+	}
+
+	blob, err := blobFromImageNCHW(detImg, 127.5, 128.0)
 	if err != nil {
 		return nil, fmt.Errorf("detector blob prep: %w", err)
 	}
@@ -154,10 +161,17 @@ func (d *Detector) Detect(img gocv.Mat) ([]Detection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create input tensor: %w", err)
 	}
-	defer inputTensor.Destroy()
+	defer func() {
+		inputTensor.Destroy()
+	}()
 
 	outputs := make([]ort.Value, len(d.outputNames))
 	if err := d.session.Run([]ort.Value{inputTensor}, outputs); err != nil {
+		for _, o := range outputs {
+			if o != nil {
+				o.Destroy()
+			}
+		}
 		return nil, fmt.Errorf("detector inference: %w", err)
 	}
 	defer func() {
@@ -250,31 +264,15 @@ func (d *Detector) getAnchorCenters(height, width, stride int) [][2]float32 {
 	return centers
 }
 
-// blobFromMatNCHW converts a BGR mat to float32 NCHW blob:
+// blobFromImageNCHW converts a BGR image to float32 NCHW blob:
 // (pixel - mean) / std and BGR->RGB channel swap.
-func blobFromMatNCHW(img gocv.Mat, mean, std float32) ([]float32, error) {
+func blobFromImageNCHW(img *imageutil.Image, mean, std float32) ([]float32, error) {
 	if img.Empty() {
-		return nil, fmt.Errorf("empty input mat")
+		return nil, fmt.Errorf("empty input image")
 	}
 	if std == 0 {
 		return nil, fmt.Errorf("std must be non-zero")
 	}
 
-	blob := gocv.BlobFromImage(
-		img,
-		1.0/float64(std),
-		image.Point{X: img.Cols(), Y: img.Rows()},
-		gocv.NewScalar(float64(mean), float64(mean), float64(mean), 0),
-		true,
-		false,
-	)
-	defer blob.Close()
-
-	data, err := blob.DataPtrFloat32()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]float32, len(data))
-	copy(out, data)
-	return out, nil
+	return imageutil.BlobFromImage(img, mean, std, true)
 }

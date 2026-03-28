@@ -1,7 +1,6 @@
 package clustering
 
 import (
-	"math"
 	"sync"
 
 	"github.com/kont1n/face-grouper/internal/models"
@@ -51,7 +50,7 @@ type intPair struct{ i, j int }
 const blockSize = 512
 
 // Cluster groups faces using BLAS-accelerated matrix multiplication for similarity.
-// Embeddings are L2-normalized by InsightFace, so dot product = cosine similarity.
+// Embeddings are already L2-normalized by the recognizer, so dot product = cosine similarity.
 func Cluster(faces []models.Face, threshold float64) []models.Cluster {
 	n := len(faces)
 	if n == 0 {
@@ -63,18 +62,11 @@ func Cluster(faces []models.Face, threshold float64) []models.Cluster {
 		return nil
 	}
 
+	// Embeddings are already L2-normalized by recognizer, use them directly
 	embData := make([]float64, n*dim)
 	for i, f := range faces {
-		norm := 0.0
-		for _, v := range f.Embedding {
-			norm += v * v
-		}
-		norm = math.Sqrt(norm)
-		if norm == 0 {
-			norm = 1
-		}
 		for j, v := range f.Embedding {
-			embData[i*dim+j] = v / norm
+			embData[i*dim+j] = v
 		}
 	}
 
