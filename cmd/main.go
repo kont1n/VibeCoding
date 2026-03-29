@@ -19,6 +19,12 @@ import (
 
 const configPath = ".env"
 
+const (
+	shutdownTimeout     = 30 * time.Second
+	loggerSyncTimeout   = 5 * time.Second
+	gracefulLogTimeout  = 10 * time.Second
+)
+
 func main() {
 	// CLI флаги для переопределения .env.
 	viewOnly := flag.Bool("view", false, "only start web UI without processing")
@@ -45,7 +51,6 @@ func main() {
 	// Контекст с сигналом завершения.
 	appCtx, appCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer appCancel()
-	defer gracefulShutdown()
 
 	// Настройка closer.
 	closer.Configure(syscall.SIGINT, syscall.SIGTERM)
@@ -63,17 +68,44 @@ func main() {
 		logger.Error(appCtx, "app error", zap.Error(err))
 		return
 	}
+
+	// Graceful shutdown.
+	gracefulShutdown()
 }
 
+// gracefulShutdown выполняет корректное завершение работы приложения.
 func gracefulShutdown() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	logger.Info(context.Background(), "starting graceful shutdown")
 
-	if err := closer.CloseAll(ctx); err != nil {
-		logger.Error(ctx, "error during shutdown", zap.Error(err))
+	// Создаём контекст с таймаутом для shutdown.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer shutdownCancel()
+
+	// Закрываем все зарегистрированные ресурсы.
+	if err := closer.CloseAll(shutdownCtx); err != nil {
+		logger.Error(shutdownCtx, "error during shutdown", zap.Error(err))
 	}
 
-	if err := logger.Sync(); err != nil {
-		fmt.Fprintf(os.Stderr, "error syncing logger: %v\n", err)
+	// Синхронизируем логгер с отдельным таймаутом.
+	syncCtx, syncCancel := context.WithTimeout(context.Background(), loggerSyncTimeout)
+	defer syncCancel()
+
+	// Создаём канал для завершения синхронизации.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := logger.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "error syncing logger: %v\n", err)
+		}
+	}()
+
+	// Ждём завершения синхронизации или таймаута.
+	select {
+	case <-done:
+		logger.Info(shutdownCtx, "graceful shutdown completed")
+	case <-syncCtx.Done():
+		fmt.Fprintf(os.Stderr, "logger sync timeout after %v\n", loggerSyncTimeout)
+	case <-shutdownCtx.Done():
+		fmt.Fprintf(os.Stderr, "shutdown timeout after %v\n", shutdownTimeout)
 	}
 }

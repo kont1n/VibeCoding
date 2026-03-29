@@ -35,19 +35,21 @@ func TestEstimateFrontalPoseFactorFromAngles(t *testing.T) {
 func TestEstimateFrontalPoseFactorFromKeypoints(t *testing.T) {
 	t.Parallel()
 
+	// Each landmark has [x, y] coordinates.
+	// 5 landmarks: left_eye, right_eye, nose, left_mouth, right_mouth.
 	frontKps := [5][2]float64{
-		{30, 30}, {30, 30}, // left eye.
-		{70, 30}, {70, 30}, // right eye.
-		{50, 45}, {50, 45}, // nose.
-		{35, 65}, {35, 65}, // left mouth.
-		{65, 65}, {65, 65}, // right mouth.
+		{30, 30}, // left eye
+		{70, 30}, // right eye
+		{50, 45}, // nose
+		{35, 65}, // left mouth
+		{65, 65}, // right mouth
 	}
 	sideKps := [5][2]float64{
-		{30, 30},
-		{70, 35},
-		{63, 46}, {63, 46}, // shifted nose.
-		{35, 65},
-		{65, 72},
+		{30, 30}, // left eye
+		{70, 35}, // right eye
+		{63, 46}, // nose (shifted)
+		{35, 65}, // left mouth
+		{65, 72}, // right mouth
 	}
 
 	front := EstimateFrontalPoseFactorFromKeypoints(frontKps)

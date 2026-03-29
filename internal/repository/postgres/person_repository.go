@@ -282,23 +282,96 @@ func (r *PersonRepository) Search(ctx context.Context, query string, limit int) 
 	return persons, nil
 }
 
-// FindSimilarFaces finds faces similar to the given embedding.
+// FindSimilarFaces finds faces similar to the given embedding with threshold filtering.
 func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []float32, limit int) ([]*model.SimilarFace, error) {
+	// Use threshold filtering for efficient search
+	// Convert similarity threshold to distance: similarity > 0.5 => distance < 0.5
+	minSimilarity := 0.5
+	maxDistance := 1.0 - minSimilarity
+
 	query := `
 		SELECT f.id, f.person_id, f.photo_id, f.embedding, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
 		       f.det_score, f.quality_score, f.thumbnail_path, f.created_at,
 		       p.name as person_name, p.custom_name as person_custom_name,
 		       1 - (f.embedding <=> $1::vector) as similarity
 		FROM faces f
-		JOIN persons p ON f.person_id = p.id
+		LEFT JOIN persons p ON f.person_id = p.id
+		WHERE f.embedding <=> $1::vector < $3
 		ORDER BY f.embedding <=> $1::vector
 		LIMIT $2
 	`
 
 	vec := pgvector.NewVector(embedding)
-	rows, err := r.pool.Query(ctx, query, vec, limit)
+	rows, err := r.pool.Query(ctx, query, vec, limit, maxDistance)
 	if err != nil {
 		return nil, fmt.Errorf("find similar faces: %w", err)
+	}
+	defer rows.Close()
+
+	var similarFaces []*model.SimilarFace
+	for rows.Next() {
+		var face model.SimilarFace
+		var embeddingVec pgvector.Vector
+
+		err := rows.Scan(
+			&face.Face.ID,
+			&face.Face.PersonID,
+			&face.Face.PhotoID,
+			&embeddingVec,
+			&face.Face.BBox.X1,
+			&face.Face.BBox.Y1,
+			&face.Face.BBox.X2,
+			&face.Face.BBox.Y2,
+			&face.Face.DetScore,
+			&face.Face.QualityScore,
+			&face.Face.ThumbnailPath,
+			&face.Face.CreatedAt,
+			&face.PersonName,
+			&face.PersonCustomName,
+			&face.Similarity,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan similar face: %w", err)
+		}
+
+		// Copy embedding data.
+		face.Face.Embedding = make([]float64, len(embeddingVec.Slice()))
+		for i, v := range embeddingVec.Slice() {
+			face.Face.Embedding[i] = float64(v)
+		}
+
+		similarFaces = append(similarFaces, &face)
+	}
+
+	return similarFaces, nil
+}
+
+// FindSimilarFacesWithThreshold finds faces similar to the given embedding with custom threshold.
+func (r *PersonRepository) FindSimilarFacesWithThreshold(
+	ctx context.Context,
+	embedding []float32,
+	threshold float64,
+	limit int,
+) ([]*model.SimilarFace, error) {
+	// Convert similarity threshold to distance: similarity > threshold => distance < 1-threshold
+	maxDistance := 1.0 - threshold
+
+	query := `
+		SELECT f.id, f.person_id, f.photo_id, f.embedding, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+		       f.det_score, f.quality_score, f.thumbnail_path, f.created_at,
+		       p.name as person_name, p.custom_name as person_custom_name,
+		       1 - (f.embedding <=> $1::vector) as similarity
+		FROM faces f
+		LEFT JOIN persons p ON f.person_id = p.id
+		WHERE f.embedding <=> $1::vector < $3
+		ORDER BY f.embedding <=> $1::vector
+		LIMIT $2
+	`
+
+	vec := pgvector.NewVector(embedding)
+	rows, err := r.pool.Query(ctx, query, vec, limit, maxDistance)
+	if err != nil {
+		return nil, fmt.Errorf("find similar faces with threshold: %w", err)
 	}
 	defer rows.Close()
 

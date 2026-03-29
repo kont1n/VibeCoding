@@ -1,72 +1,57 @@
-# Git
-.git
-.gitignore
-.gitattributes
-
-# Docker
-deploy/docker/
-.dockerignore
-
-# Build artifacts
+# Binaries
 *.exe
-face-grouper
-face-grouper.exe
-build/
-dist/
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+server
 
-# Output and runtime data
-output/
-*.log
-*.json
-!README.md
+# Test binary
+*.test
 
-# Development files
-.env
-.env.local
-.env.*.local
-*.md
-!README.md
-!DOCKER.md
+# Output of the go coverage tool
+*.out
 
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Dependency directories
+vendor/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-.project
-.classpath
-.settings/
 
-# Test files
-*_test.go
-test/
-tests/
+# OS
+.DS_Store
+Thumbs.db
 
-# Scripts (not needed in container)
-scripts/
+# Environment files
+.env
+.env.local
+.env.*.local
 
-# Documentation
-docs/
-*.pdf
-*.docx
+# Logs
+*.log
+logs/
 
-# Models (will be mounted as volume)
+# Data
+dataset/
+output/
+*.db
+*.sqlite
+
+# Models (too large for git)
 models/*.onnx
-models/*.pt
-models/*.pth
 
-# Dataset (will be mounted as volume)
-dataset/*
-!dataset/.gitkeep
+# Temporary files
+tmp/
+temp/
+.tmp/
 
-# Runtime (will be mounted as volume)
-runtime/
+# Docker
+docker-compose.override.yml
 
-# Qwen
-.qwen/
+# Coverage
+coverage.out

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -28,7 +29,7 @@ func Load(path string) error {
 	// Overload перезаписывает существующие переменные окружения.
 	err := godotenv.Overload(path)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return fmt.Errorf("load .env file: %w", err)
 	}
 
 	AppConfig = &Config{
@@ -41,6 +42,11 @@ func Load(path string) error {
 		Logger:    env.NewLoggerConfig(),
 		Database:  env.NewDatabaseConfig(),
 		Redis:     env.NewRedisConfig(),
+	}
+
+	// Валидация критических настроек
+	if err := AppConfig.Database.Validate(); err != nil {
+		return fmt.Errorf("database config validation failed: %w", err)
 	}
 
 	return nil

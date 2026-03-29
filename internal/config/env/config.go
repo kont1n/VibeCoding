@@ -1,8 +1,10 @@
 package env
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 // AppConfig хранит основные настройки приложения.
@@ -68,6 +70,14 @@ type DatabaseConfig struct {
 	MaxConnIdleTime   int
 	HealthCheckPeriod int
 	RunMigrations     bool
+}
+
+// DSN возвращает строку подключения к базе данных.
+func (c DatabaseConfig) DSN() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.Database, c.SSLMode,
+	)
 }
 
 // RedisConfig хранит настройки Redis.
@@ -144,11 +154,11 @@ func NewLoggerConfig() LoggerConfig {
 // NewDatabaseConfig создаёт конфигурацию базы данных из ENV.
 func NewDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
-		Host:              getEnv("DB_HOST", "localhost"),
+		Host:              requireEnv("DB_HOST"),
 		Port:              getInt("DB_PORT", 5432),
-		Database:          getEnv("DB_NAME", "face-grouper"),
-		User:              getEnv("DB_USER", "face-grouper"),
-		Password:          getEnv("DB_PASSWORD", "secret"),
+		Database:          requireEnv("DB_NAME"),
+		User:              requireEnv("DB_USER"),
+		Password:          requireEnv("DB_PASSWORD"),
 		SSLMode:           getEnv("DB_SSLMODE", "disable"),
 		MaxConns:          getInt("DB_MAX_CONNS", 25),
 		MinConns:          getInt("DB_MIN_CONNS", 5),
@@ -167,6 +177,50 @@ func NewRedisConfig() RedisConfig {
 		Password: getEnv("REDIS_PASSWORD", ""),
 		DB:       getInt("REDIS_DB", 0),
 	}
+}
+
+// Validate проверяет критические настройки конфигурации.
+func (c *DatabaseConfig) Validate() error {
+	if c.Host == "" {
+		return fmt.Errorf("DB_HOST is required")
+	}
+	if c.Database == "" {
+		return fmt.Errorf("DB_NAME is required")
+	}
+	if c.User == "" {
+		return fmt.Errorf("DB_USER is required")
+	}
+	if c.Password == "" {
+		return fmt.Errorf("DB_PASSWORD is required")
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		return fmt.Errorf("DB_PORT must be between 1 and 65535")
+	}
+	return nil
+}
+
+// ConnLifetime возвращает MaxConnLifetime как time.Duration.
+func (c *DatabaseConfig) ConnLifetime() time.Duration {
+	return time.Duration(c.MaxConnLifetime) * time.Second
+}
+
+// ConnIdleTime возвращает MaxConnIdleTime как time.Duration.
+func (c *DatabaseConfig) ConnIdleTime() time.Duration {
+	return time.Duration(c.MaxConnIdleTime) * time.Second
+}
+
+// HealthCheckPeriodDuration возвращает HealthCheckPeriod как time.Duration.
+func (c *DatabaseConfig) HealthCheckPeriodDuration() time.Duration {
+	return time.Duration(c.HealthCheckPeriod) * time.Second
+}
+
+// requireEnv получает обязательную переменную окружения.
+func requireEnv(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		panic(fmt.Sprintf("required environment variable %s is not set", key))
+	}
+	return val
 }
 
 // getEnv получает строковую переменную окружения со значением по умолчанию.

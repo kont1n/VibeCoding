@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/kont1n/face-grouper/internal/config/env"
 	"github.com/kont1n/face-grouper/internal/imageutil"
@@ -95,47 +96,52 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	recBatcher := newRecognizerBatcher(recPool, workers, embedBatchSize, embedFlush)
 	defer recBatcher.Close()
 
-	jobs := make(chan string, len(files))
-	results := make(chan fileResult, len(files))
+	// Semaphore для ограничения параллелизма.
+	sem := make(chan struct{}, workers)
 
-	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for path := range jobs {
-				faces, err := s.processImage(ctx, path, detPool, recBatcher, recSize, thumbDir)
-				results <- fileResult{path: path, faces: faces, err: err}
-			}
-		}()
-	}
+	// Используем errgroup для управления ошибками и отменой.
+	g, ctx := errgroup.WithContext(ctx)
 
-	for _, f := range files {
-		jobs <- f
-	}
-	close(jobs)
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
+	var mu sync.Mutex
 	processed := 0
 	total := len(files)
-	for r := range results {
-		processed++
-		if r.err != nil {
-			fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, r.path, r.err)
-			logger.Error(ctx, "file processing error",
-				zap.String("path", r.path),
-				zap.Error(r.err),
-			)
-			res.FileErrors[r.path] = r.err.Error()
-			res.ErrorCount++
-			continue
-		}
-		fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, r.path, len(r.faces))
-		res.Faces = append(res.Faces, r.faces...)
+
+	for _, f := range files {
+		f := f // capture loop variable
+		g.Go(func() error {
+			// Acquire semaphore.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			defer func() { <-sem }()
+
+			faces, err := s.processImage(ctx, f, detPool, recBatcher, recSize, thumbDir)
+
+			mu.Lock()
+			processed++
+			if err != nil {
+				fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, f, err)
+				logger.Error(ctx, "file processing error",
+					zap.String("path", f),
+					zap.Error(err),
+				)
+				res.FileErrors[f] = err.Error()
+				res.ErrorCount++
+			} else {
+				fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, f, len(faces))
+				res.Faces = append(res.Faces, faces...)
+			}
+			mu.Unlock()
+
+			return nil // не прерываем обработку из-за ошибки одного файла
+		})
+	}
+
+	// Ждём завершения всех горутин.
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("extraction: %w", err)
 	}
 
 	logger.Info(ctx, "extraction completed",
@@ -144,12 +150,6 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	)
 
 	return res, nil
-}
-
-type fileResult struct {
-	path  string
-	faces []model.Face
-	err   error
 }
 
 func (s *extractionService) processImage(
