@@ -15,6 +15,7 @@ import (
 	"github.com/kont1n/face-grouper/internal/report"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
 	"github.com/kont1n/face-grouper/internal/service/organization"
+	"github.com/kont1n/face-grouper/internal/web"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 	"go.uber.org/zap"
@@ -259,7 +260,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	stageDurations["organize_avatar"] = time.Since(stageStart)
 
 	// --- Build report ---
-	rpt := a.buildReport(start, appCfg, extractResult, persons, stageDurations)
+	rpt := a.buildReport(start, appCfg, len(files), extractResult, persons, stageDurations)
 
 	if err := report.Save(rpt, outputDir); err != nil {
 		fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
@@ -278,14 +279,14 @@ func (a *App) runProcess(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) buildReport(start time.Time, cfg *config.Config, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo, stageDurations map[string]time.Duration) *report.Report {
+func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo, stageDurations map[string]time.Duration) *report.Report {
 	rpt := &report.Report{
 		StartedAt:    start,
 		InputDir:     cfg.App.InputDir,
 		OutputDir:    cfg.App.OutputDir,
-		TotalImages:  0, // будет установлено ниже
+		TotalImages:  totalImages,
 		TotalFaces:   len(extractResult.Faces),
-		TotalPersons: 0, // будет установлено ниже
+		TotalPersons: len(persons),
 		Errors:       extractResult.ErrorCount,
 		FileErrors:   extractResult.FileErrors,
 		Threshold:    cfg.Cluster.Threshold,
@@ -331,5 +332,5 @@ func (a *App) runWebUI(ctx context.Context, outputDir string, port int) error {
 		zap.String("output_dir", outputDir),
 		zap.Int("port", port),
 	)
-	return nil // TODO: реализовать веб-сервер
+	return web.Serve(outputDir, port)
 }

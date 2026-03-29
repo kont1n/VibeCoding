@@ -84,7 +84,7 @@ func estimateSimilarityTransform(src, dst [][2]float64) [2][3]float64 {
 		a += dstC[i][0] * srcC[i][0]
 		b += dstC[i][0] * srcC[i][1]
 		c += dstC[i][1] * srcC[i][0]
-		d += dstC[i][1] * srcC[i][0]
+		d += dstC[i][1] * srcC[i][1]
 	}
 	a /= fn
 	b /= fn

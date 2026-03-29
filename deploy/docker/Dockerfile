@@ -28,13 +28,15 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Download ONNX Runtime CPU library
+# Download ONNX Runtime CPU library (auto-detect arch)
 ARG ONNXRUNTIME_VERSION=1.23.0
-RUN curl -L -o /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
-    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
-    && tar -xzf /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
-    && mv /opt/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
-    && rm /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then ORT_ARCH="aarch64"; else ORT_ARCH="x64"; fi && \
+    curl -L -o /tmp/onnxruntime.tgz \
+    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ONNXRUNTIME_VERSION}.tgz \
+    && tar -xzf /tmp/onnxruntime.tgz -C /opt/ \
+    && mv /opt/onnxruntime-linux-${ORT_ARCH}-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
+    && rm /tmp/onnxruntime.tgz
 
 # Set environment variables for CGO
 ENV CGO_ENABLED=1
