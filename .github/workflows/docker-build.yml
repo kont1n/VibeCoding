@@ -91,10 +91,10 @@ jobs:
         if: github.event_name != 'pull_request'
 
       - name: Upload Trivy scan results (CPU)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-cpu-results.sarif'
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-cpu-results.sarif') != ''
 
   # -------------------------------------------------------------------------
   # Build GPU Image (NVIDIA)
@@ -159,10 +159,10 @@ jobs:
         if: github.event_name != 'pull_request'
 
       - name: Upload Trivy scan results (GPU)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-gpu-results.sarif'
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-gpu-results.sarif') != ''
 
   # -------------------------------------------------------------------------
   # Build ROCm Image
@@ -227,7 +227,7 @@ jobs:
         if: github.event_name != 'pull_request'
 
       - name: Upload Trivy scan results (ROCm)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-rocm-results.sarif'
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-rocm-results.sarif') != ''
