@@ -127,7 +127,7 @@ BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql VOLATILE;
 
 CREATE TRIGGER update_persons_updated_at 
     BEFORE UPDATE ON persons

@@ -186,7 +186,7 @@ func (h *PersonHandler) Photos(w http.ResponseWriter, r *http.Request) {
 			limit = 50
 		}
 
-		photos, err := h.db.Photos.List(r.Context(), offset, limit)
+		photos, err := h.db.Photos.ListByPerson(r.Context(), id, offset, limit)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return

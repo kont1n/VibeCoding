@@ -36,6 +36,64 @@ type PersonReport struct {
 	Photos       []string `json:"photos"`
 }
 
+// BuildParams contains parameters for building a report.
+type BuildParams struct {
+	StartedAt   time.Time
+	InputDir    string
+	OutputDir   string
+	TotalImages int
+	TotalFaces  int
+	Errors      int
+	FileErrors  map[string]string
+	Threshold   float64
+	GPU         bool
+	Persons     []PersonBuildInfo
+}
+
+// PersonBuildInfo contains per-person data for report building.
+type PersonBuildInfo struct {
+	ID           int
+	PhotoCount   int
+	FaceCount    int
+	Thumbnail    string
+	AvatarPath   string
+	QualityScore float64
+	Photos       []string
+}
+
+// Build creates a Report from the given parameters.
+func Build(params BuildParams) *Report {
+	rpt := &Report{
+		StartedAt:    params.StartedAt,
+		InputDir:     params.InputDir,
+		OutputDir:    params.OutputDir,
+		TotalImages:  params.TotalImages,
+		TotalFaces:   params.TotalFaces,
+		TotalPersons: len(params.Persons),
+		Errors:       params.Errors,
+		FileErrors:   params.FileErrors,
+		Threshold:    params.Threshold,
+		GPU:          params.GPU,
+	}
+
+	for _, p := range params.Persons {
+		rpt.Persons = append(rpt.Persons, PersonReport{
+			ID:           p.ID,
+			PhotoCount:   p.PhotoCount,
+			FaceCount:    p.FaceCount,
+			Thumbnail:    p.Thumbnail,
+			AvatarPath:   p.AvatarPath,
+			QualityScore: p.QualityScore,
+			Photos:       p.Photos,
+		})
+	}
+
+	rpt.FinishedAt = time.Now()
+	rpt.Duration = time.Since(params.StartedAt).Round(time.Millisecond).String()
+
+	return rpt
+}
+
 // Save writes the report as JSON to the output directory.
 func Save(r *Report, outputDir string) error {
 	path := filepath.Join(outputDir, "report.json")

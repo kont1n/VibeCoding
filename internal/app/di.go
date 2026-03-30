@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
@@ -22,6 +23,9 @@ import (
 
 // DiContainer управляет зависимостями приложения с lazy initialization.
 type DiContainer struct {
+	mu  sync.Mutex
+	cfg *config.Config
+
 	api *cli.API
 	db  *database.DB
 
@@ -41,18 +45,20 @@ func (d *DiContainer) SetDatabase(db *database.DB) {
 }
 
 // NewDiContainer создаёт новый DI контейнер.
-func NewDiContainer() *DiContainer {
-	return &DiContainer{}
+func NewDiContainer(cfg *config.Config) *DiContainer {
+	return &DiContainer{cfg: cfg}
 }
 
 // API возвращает CLI API, инициализируя при необходимости.
 func (d *DiContainer) API(ctx context.Context) *cli.API {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.api == nil {
 		d.api = cli.NewAPI(
-			d.ScanService(ctx),
-			d.ExtractionService(ctx),
-			d.ClusterService(ctx),
-			d.OrganizeService(ctx),
+			d.scanServiceLocked(ctx),
+			d.extractionServiceLocked(ctx),
+			d.clusterServiceLocked(ctx),
+			d.organizeServiceLocked(ctx),
 		)
 	}
 	return d.api
@@ -60,19 +66,31 @@ func (d *DiContainer) API(ctx context.Context) *cli.API {
 
 // ScanService возвращает сервис сканирования.
 func (d *DiContainer) ScanService(ctx context.Context) scan.ScanService {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.scanServiceLocked(ctx)
+}
+
+func (d *DiContainer) scanServiceLocked(_ context.Context) scan.ScanService {
 	if d.scanService == nil {
-		d.scanService = scan.NewScanService(d.ScannerRepository())
+		d.scanService = scan.NewScanService(d.scannerRepositoryLocked())
 	}
 	return d.scanService
 }
 
 // ExtractionService возвращает сервис экстракции.
 func (d *DiContainer) ExtractionService(ctx context.Context) extraction.ExtractionService {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.extractionServiceLocked(ctx)
+}
+
+func (d *DiContainer) extractionServiceLocked(ctx context.Context) extraction.ExtractionService {
 	if d.extractionService == nil {
 		d.extractionService = extraction.NewExtractionService(
-			config.AppConfig.Extract,
-			d.DetectorPool(ctx),
-			d.RecognizerPool(ctx),
+			d.cfg.Extract,
+			d.detectorPoolLocked(ctx),
+			d.recognizerPoolLocked(ctx),
 		)
 	}
 	return d.extractionService
@@ -80,6 +98,12 @@ func (d *DiContainer) ExtractionService(ctx context.Context) extraction.Extracti
 
 // ClusterService возвращает сервис кластеризации.
 func (d *DiContainer) ClusterService(ctx context.Context) clustering.ClusterService {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.clusterServiceLocked(ctx)
+}
+
+func (d *DiContainer) clusterServiceLocked(_ context.Context) clustering.ClusterService {
 	if d.clusterService == nil {
 		d.clusterService = clustering.NewClusterService()
 	}
@@ -88,6 +112,12 @@ func (d *DiContainer) ClusterService(ctx context.Context) clustering.ClusterServ
 
 // OrganizeService возвращает сервис организации.
 func (d *DiContainer) OrganizeService(ctx context.Context) organization.OrganizeService {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.organizeServiceLocked(ctx)
+}
+
+func (d *DiContainer) organizeServiceLocked(_ context.Context) organization.OrganizeService {
 	if d.organizeService == nil {
 		d.organizeService = organization.NewOrganizeService()
 	}
@@ -96,6 +126,12 @@ func (d *DiContainer) OrganizeService(ctx context.Context) organization.Organize
 
 // ScannerRepository возвращает репозиторий сканирования.
 func (d *DiContainer) ScannerRepository() filesystem.ScannerRepository {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.scannerRepositoryLocked()
+}
+
+func (d *DiContainer) scannerRepositoryLocked() filesystem.ScannerRepository {
 	if d.scannerRepo == nil {
 		d.scannerRepo = filesystem.NewScannerRepository()
 	}
@@ -104,9 +140,15 @@ func (d *DiContainer) ScannerRepository() filesystem.ScannerRepository {
 
 // DetectorPool возвращает пул детекторов.
 func (d *DiContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.detectorPoolLocked(ctx)
+}
+
+func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorRepository {
 	if d.detectorPool == nil {
-		cfg := config.AppConfig.Extract
-		modelsDir := config.AppConfig.Models.Dir
+		cfg := d.cfg.Extract
+		modelsDir := d.cfg.Models.Dir
 
 		// Determine preferred provider type.
 		var preferred provider.ProviderType
@@ -174,9 +216,15 @@ func (d *DiContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository 
 
 // RecognizerPool возвращает пул распознавателей.
 func (d *DiContainer) RecognizerPool(ctx context.Context) []ml.RecognizerRepository {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.recognizerPoolLocked(ctx)
+}
+
+func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerRepository {
 	if d.recognizerPool == nil {
-		cfg := config.AppConfig.Extract
-		modelsDir := config.AppConfig.Models.Dir
+		cfg := d.cfg.Extract
+		modelsDir := d.cfg.Models.Dir
 
 		// Determine preferred provider type.
 		var preferred provider.ProviderType

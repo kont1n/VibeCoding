@@ -13,8 +13,6 @@ import (
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/report"
-	"github.com/kont1n/face-grouper/internal/service/extraction"
-	"github.com/kont1n/face-grouper/internal/service/organization"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
 
@@ -156,7 +154,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	send("organize", "Организация результатов...", 1.0)
 
 	// --- Report. ---.
-	rpt := buildReport(start, appCfg, len(files), extractResult, persons)
+	rpt := buildReportFromResults(start, appCfg, len(files), extractResult, persons)
 	if err := report.Save(rpt, outputDir); err != nil {
 		logger.Warn(ctx, "cannot save report", zap.Error(err))
 	}
@@ -164,34 +162,3 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	finish()
 }
 
-func buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
-	rpt := &report.Report{
-		StartedAt:    start,
-		InputDir:     cfg.App.InputDir,
-		OutputDir:    cfg.App.OutputDir,
-		TotalImages:  totalImages,
-		TotalFaces:   len(extractResult.Faces),
-		TotalPersons: len(persons),
-		Errors:       extractResult.ErrorCount,
-		FileErrors:   extractResult.FileErrors,
-		Threshold:    cfg.Cluster.Threshold,
-		GPU:          cfg.Extract.GPU,
-	}
-
-	for _, p := range persons {
-		rpt.Persons = append(rpt.Persons, report.PersonReport{
-			ID:           p.ID,
-			PhotoCount:   p.PhotoCount,
-			FaceCount:    p.FaceCount,
-			Thumbnail:    p.Thumbnail,
-			AvatarPath:   p.AvatarPath,
-			QualityScore: p.QualityScore,
-			Photos:       p.Photos,
-		})
-	}
-
-	rpt.FinishedAt = time.Now()
-	rpt.Duration = time.Since(start).Round(time.Millisecond).String()
-
-	return rpt
-}

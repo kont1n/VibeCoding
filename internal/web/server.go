@@ -8,9 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
@@ -20,10 +18,11 @@ import (
 
 // ServerConfig holds configuration for the HTTP server.
 type ServerConfig struct {
-	Port      int
-	OutputDir string
-	UploadDir string
-	DB        *database.DB
+	Port           int
+	OutputDir      string
+	UploadDir      string
+	DB             *database.DB
+	AllowedOrigins []string // CORS allowed origins. Empty = same-origin only.
 }
 
 // Server is the main HTTP server with all API routes.
@@ -41,6 +40,9 @@ type Server struct {
 
 	// Pipeline runner for async processing.
 	pipelineRunner handler.PipelineRunner
+
+	// stopCh signals background goroutines (e.g. rate limiter cleanup) to stop.
+	stopCh chan struct{}
 }
 
 // NewServer creates and configures a new HTTP server.
@@ -49,6 +51,7 @@ func NewServer(cfg ServerConfig, pipelineRunner handler.PipelineRunner) *Server 
 		cfg:            cfg,
 		mux:            http.NewServeMux(),
 		pipelineRunner: pipelineRunner,
+		stopCh:         make(chan struct{}),
 	}
 
 	s.initHandlers()
@@ -71,7 +74,7 @@ func (s *Server) initHandlers() {
 	}
 
 	s.uploadHandler = handler.NewUploadHandler(uploadDir, 500<<20) // 500MB max.
-	s.sessionHandler = handler.NewSessionHandler(s.pipelineRunner)
+	s.sessionHandler = handler.NewSessionHandler(s.pipelineRunner, uploadDir)
 	s.personHandler = handler.NewPersonHandler(s.cfg.OutputDir, s.cfg.DB)
 	s.errorHandler = handler.NewErrorHandler(s.cfg.OutputDir, s.cfg.DB)
 }
@@ -109,12 +112,13 @@ func (s *Server) registerRoutes() {
 func (s *Server) applyMiddleware() {
 	// Build middleware chain: Recovery → RateLimit → MaxBody → CORS → Handler.
 	rateLimiter := middleware.NewRateLimiter(100, 200)
-	stopCh := make(chan struct{})
 
-	go rateLimiter.Cleanup(5*time.Minute, stopCh)
+	go rateLimiter.Cleanup(5*time.Minute, s.stopCh)
 
 	var h http.Handler = s.mux
-	h = middleware.CORS(h)
+	// Embedded SPA is served from same origin, so no CORS needed by default.
+	// Allow same-origin only; override via ServerConfig.AllowedOrigins if needed.
+	h = middleware.CORS(h, s.cfg.AllowedOrigins...)
 	h = middleware.MaxBodySize(500 << 20)(h)
 	h = rateLimiter.Middleware(h)
 	h = middleware.Recovery(nil)(h)
@@ -144,7 +148,14 @@ func (s *Server) serveReport(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListenAndServe starts the HTTP server with graceful shutdown.
+// It listens for context cancellation (e.g. from signal.NotifyContext in main)
+// instead of registering its own signal handler, avoiding double signal.Notify conflicts.
 func (s *Server) ListenAndServe() error {
+	return s.ListenAndServeContext(context.Background())
+}
+
+// ListenAndServeContext starts the HTTP server and shuts it down when ctx is cancelled.
+func (s *Server) ListenAndServeContext(ctx context.Context) error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -164,20 +175,20 @@ func (s *Server) ListenAndServe() error {
 		close(errCh)
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
-	case sig := <-quit:
-		log.Printf("Received %v, shutting down...", sig)
+	case <-ctx.Done():
+		log.Printf("Context cancelled, shutting down...")
 	case err := <-errCh:
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Stop background goroutines (e.g. rate limiter cleanup).
+	close(s.stopCh)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown: %w", err)
 	}
 

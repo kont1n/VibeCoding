@@ -171,6 +171,54 @@ func (r *PhotoRepository) List(ctx context.Context, offset, limit int) ([]*model
 	return photos, nil
 }
 
+// ListByPerson retrieves photos for a specific person with pagination.
+func (r *PhotoRepository) ListByPerson(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.Photo, error) {
+	query := `
+		SELECT DISTINCT ph.id, ph.path, ph.original_path, ph.width, ph.height,
+		       ph.file_size, ph.mime_type, ph.metadata, ph.uploaded_at
+		FROM photos ph
+		JOIN faces f ON f.photo_id = ph.id
+		WHERE f.person_id = $1
+		ORDER BY ph.uploaded_at DESC
+		OFFSET $2 LIMIT $3
+	`
+
+	rows, err := r.pool.Query(ctx, query, personID, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var photos []*model.Photo
+	for rows.Next() {
+		photo := &model.Photo{}
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&photo.ID,
+			&photo.Path,
+			&photo.OriginalPath,
+			&photo.Width,
+			&photo.Height,
+			&photo.FileSize,
+			&photo.MimeType,
+			&metadataJSON,
+			&photo.UploadedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal(metadataJSON, &photo.Metadata); err != nil {
+			return nil, err
+		}
+
+		photos = append(photos, photo)
+	}
+
+	return photos, nil
+}
+
 // Delete deletes a photo.
 func (r *PhotoRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM photos WHERE id = $1`

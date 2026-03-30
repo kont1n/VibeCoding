@@ -9,6 +9,7 @@ import (
 	"io"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -163,13 +164,18 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 }
 
 func (s *extractionService) processImage(
-	_ context.Context,
+	ctx context.Context,
 	imagePath string,
 	detPool chan ml.DetectorRepository,
 	recBatcher *recognizerBatcher,
 	recSize int,
 	thumbDir string,
 ) ([]model.Face, error) {
+	// Check for cancellation before expensive I/O.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	img, err := imageutil.LoadImage(imagePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read image: %s: %w", imagePath, err)
@@ -194,6 +200,11 @@ func (s *extractionService) processImage(
 			img.Close()
 			img = resized
 		}
+	}
+
+	// Check for cancellation before detection.
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	// Детекция.
@@ -345,6 +356,7 @@ type recognizerBatcher struct {
 	batchSize    int
 	flushTimeout time.Duration
 	closeOnce    sync.Once
+	closed       atomic.Bool
 	wg           sync.WaitGroup
 }
 
@@ -375,6 +387,9 @@ func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float64, error) 
 	if len(imgs) == 0 {
 		return nil, nil
 	}
+	if b.closed.Load() {
+		return nil, fmt.Errorf("recognizer batcher is closed")
+	}
 	req := &recognizeRequest{
 		done:       make(chan struct{}),
 		embeddings: make([][]float64, len(imgs)),
@@ -392,6 +407,7 @@ func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float64, error) 
 
 func (b *recognizerBatcher) Close() {
 	b.closeOnce.Do(func() {
+		b.closed.Store(true)
 		close(b.items)
 		b.wg.Wait()
 	})

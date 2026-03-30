@@ -63,7 +63,7 @@ func (a *App) initDeps(ctx context.Context) error {
 
 // initDI инициализирует DI контейнер.
 func (a *App) initDI(_ context.Context) error {
-	a.diContainer = NewDiContainer()
+	a.diContainer = NewDiContainer(config.AppConfig)
 	return nil
 }
 
@@ -267,7 +267,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	stageDurations["organize_avatar"] = time.Since(stageStart)
 
 	// --- Build report. ---.
-	rpt := a.buildReport(start, appCfg, len(files), extractResult, persons)
+	rpt := buildReportFromResults(start, appCfg, len(files), extractResult, persons)
 
 	if err := report.Save(rpt, outputDir); err != nil {
 		_, _ = fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
@@ -286,22 +286,11 @@ func (a *App) runProcess(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
-	rpt := &report.Report{
-		StartedAt:    start,
-		InputDir:     cfg.App.InputDir,
-		OutputDir:    cfg.App.OutputDir,
-		TotalImages:  totalImages,
-		TotalFaces:   len(extractResult.Faces),
-		TotalPersons: len(persons),
-		Errors:       extractResult.ErrorCount,
-		FileErrors:   extractResult.FileErrors,
-		Threshold:    cfg.Cluster.Threshold,
-		GPU:          cfg.Extract.GPU,
-	}
-
-	for _, p := range persons {
-		rpt.Persons = append(rpt.Persons, report.PersonReport{
+// buildReportFromResults creates a report from extraction and organization results.
+func buildReportFromResults(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
+	reportPersons := make([]report.PersonBuildInfo, len(persons))
+	for i, p := range persons {
+		reportPersons[i] = report.PersonBuildInfo{
 			ID:           p.ID,
 			PhotoCount:   p.PhotoCount,
 			FaceCount:    p.FaceCount,
@@ -309,13 +298,21 @@ func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, 
 			AvatarPath:   p.AvatarPath,
 			QualityScore: p.QualityScore,
 			Photos:       p.Photos,
-		})
+		}
 	}
 
-	rpt.FinishedAt = time.Now()
-	rpt.Duration = time.Since(start).Round(time.Millisecond).String()
-
-	return rpt
+	return report.Build(report.BuildParams{
+		StartedAt:   start,
+		InputDir:    cfg.App.InputDir,
+		OutputDir:   cfg.App.OutputDir,
+		TotalImages: totalImages,
+		TotalFaces:  len(extractResult.Faces),
+		Errors:      extractResult.ErrorCount,
+		FileErrors:  extractResult.FileErrors,
+		Threshold:   cfg.Cluster.Threshold,
+		GPU:         cfg.Extract.GPU,
+		Persons:     reportPersons,
+	})
 }
 
 func (a *App) printSummary(w io.Writer, rpt *report.Report, stageDurations map[string]time.Duration) {
@@ -348,5 +345,5 @@ func (a *App) runWebUI(ctx context.Context, outputDir string, port int) error {
 		DB:        a.diContainer.db,
 	}, pipeline)
 
-	return srv.ListenAndServe() //nolint:contextcheck
+	return srv.ListenAndServeContext(ctx)
 }

@@ -153,10 +153,29 @@ func WriteErrorWithCode(w http.ResponseWriter, statusCode int, err, code, messag
 	})
 }
 
-// CORS middleware adds CORS headers for development.
-func CORS(next http.Handler) http.Handler {
+// CORS middleware adds CORS headers.
+// allowedOrigins specifies permitted origins. If empty, defaults to same-origin only (no CORS header).
+// Pass []string{"*"} to allow all origins (development only).
+func CORS(next http.Handler, allowedOrigins ...string) http.Handler {
+	originSet := make(map[string]bool, len(allowedOrigins))
+	allowAll := false
+	for _, o := range allowedOrigins {
+		if o == "*" {
+			allowAll = true
+		}
+		originSet[o] = true
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if originSet[origin] {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 

@@ -86,6 +86,14 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 	invStd := 1.0 / float64(r.inputStd)
 	mean := float64(r.inputMean)
 
+	// Track resized images for cleanup after blob is built.
+	var resized []*imageutil.Image
+	defer func() {
+		for _, img := range resized {
+			img.Close()
+		}
+	}()
+
 	for b, face := range faces {
 		if face.Empty() {
 			return nil, fmt.Errorf("empty face image at index %d", b)
@@ -94,7 +102,7 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 		img := face
 		if face.Width != r.inputSize || face.Height != r.inputSize {
 			img = imageutil.Resize(face, r.inputSize, r.inputSize)
-			defer img.Close()
+			resized = append(resized, img)
 		}
 
 		// NCHW format: [batch, channel, height, width].

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -34,8 +37,9 @@ type ProgressEvent struct {
 
 // SessionHandler handles processing session endpoints.
 type SessionHandler struct {
-	runner   PipelineRunner
-	sessions sync.Map // sessionID -> sessionState.
+	runner       PipelineRunner
+	sessions     sync.Map // sessionID -> sessionState.
+	allowedBase  string   // Base directory for input path validation.
 }
 
 type sessionState struct {
@@ -50,9 +54,11 @@ type sessionState struct {
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(runner PipelineRunner) *SessionHandler {
+// allowedBase restricts input_dir to paths under this directory (path traversal protection).
+func NewSessionHandler(runner PipelineRunner, allowedBase string) *SessionHandler {
 	return &SessionHandler{
-		runner: runner,
+		runner:      runner,
+		allowedBase: filepath.Clean(allowedBase),
 	}
 }
 
@@ -76,6 +82,18 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input_dir is required"})
 		return
 	}
+
+	// Path traversal protection: input_dir must be within the allowed base directory.
+	cleanDir := filepath.Clean(req.InputDir)
+	if !strings.HasPrefix(cleanDir, h.allowedBase+string(os.PathSeparator)) && cleanDir != h.allowedBase {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input_dir must be within the allowed upload directory"})
+		return
+	}
+	if info, err := os.Stat(cleanDir); err != nil || !info.IsDir() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input_dir does not exist or is not a directory"})
+		return
+	}
+	req.InputDir = cleanDir
 
 	// Check if session is already processing.
 	if _, loaded := h.sessions.Load(sessionID); loaded {
