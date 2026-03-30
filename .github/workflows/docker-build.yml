@@ -153,7 +153,7 @@ jobs:
       - name: Run Trivy vulnerability scanner (GPU)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}-gpu
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: 'sarif'
           output: 'trivy-gpu-results.sarif'
         if: github.event_name != 'pull_request'
@@ -221,7 +221,7 @@ jobs:
       - name: Run Trivy vulnerability scanner (ROCm)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}-rocm
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: 'sarif'
           output: 'trivy-rocm-results.sarif'
         if: github.event_name != 'pull_request'

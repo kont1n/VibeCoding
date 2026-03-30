@@ -163,7 +163,8 @@ formatters:
         - pattern: 'interface{}'
           replacement: 'any'
     goimports:
-      local-prefixes: github.com/kont1n/face-grouper
+      local-prefixes:
+        - github.com/kont1n/face-grouper
     gci:
       sections:
         - standard
