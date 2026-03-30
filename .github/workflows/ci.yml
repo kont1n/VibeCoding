@@ -25,11 +25,11 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         env:
           GOTOOLCHAIN: local
         with:
-          version: latest
+          version: v2.11.4
           args: --timeout=5m --exclude-dirs=internal/infrastructure/ml
 
   test:
@@ -61,6 +61,8 @@ jobs:
 
       - name: Install dependencies
         run: go mod download
+        env:
+          GOTOOLCHAIN: local
 
       - name: Run tests
         run: go test -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v 'infrastructure/ml')
@@ -140,10 +142,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./deploy/Dockerfile
+          file: ./deploy/docker/Dockerfile
           push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+        env:
+          GOTOOLCHAIN: local
