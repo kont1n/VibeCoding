@@ -30,7 +30,7 @@ jobs:
           GOTOOLCHAIN: local
         with:
           version: v2.11.4
-          args: --timeout=5m --exclude-dirs=internal/infrastructure/ml
+          args: --timeout=5m
 
   test:
     name: Test
