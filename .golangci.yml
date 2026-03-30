@@ -10,7 +10,7 @@ run:
 
 output:
   formats:
-    colored-line-number:
+    colored-tab:
       path: stdout
 
 issues:
