@@ -1,62 +1,62 @@
-# 🔽 Загрузка InsightFace моделей
+# Загрузка InsightFace моделей
 
-Модели необходимо скачать вручную и поместить в папку `./models/`
+Модели необходимо скачать и поместить в папку `./models/`.
 
-## Модели для скачивания
+## Модели
 
-### 1. det_10g.onnx (~17 MB)
-SCRFD детектор лиц
+| Файл | Размер | Назначение |
+|------|--------|-----------|
+| `det_10g.onnx` | ~17 MB | SCRFD детектор лиц |
+| `w600k_r50.onnx` | ~174 MB | ArcFace распознавание лиц |
 
-**Варианты для скачивания:**
-- GitHub: https://github.com/deepinsight/insightface/blob/master/model_zoo/buffalo_l/det_10g.onnx
-  - Нажмите "Download" или правой кнопкой → "Save link as"
-- Drive: https://drive.google.com/file/d/19JHbXqNvYdN8qKvBnJbKqNvYdN8qKvB/view
-- Alternative: https://huggingface.co/spaces/lea-ondr/insightface-demo/tree/main/models
+Оба файла из пакета `buffalo_l` проекта [InsightFace](https://github.com/deepinsight/insightface).
 
-### 2. w600k_r50.onnx (~174 MB)
-ArcFace распознавание лиц
+## Способ 1: Через скрипт (рекомендуется)
 
-**Варианты для скачивания:**
-- GitHub: https://github.com/deepinsight/insightface/blob/master/model_zoo/buffalo_l/w600k_r50.onnx
-  - Нажмите "Download" или правой кнопкой → "Save link as"
-- Drive: https://drive.google.com/file/d/17d9L9u9vRL9qZ9v9qZ9v9qZ9v9qZ9v9/view
-- Alternative: https://huggingface.co/spaces/lea-ondr/insightface-demo/tree/main/models
+```bash
+python scripts/download_models.py
+```
 
-## Инструкция
+## Способ 2: Через Python huggingface_hub
 
-1. Откройте одну из ссылок выше
-2. Скачайте оба файла
-3. Поместите их в `C:\Users\kont1n\Git\VibeCoding-1\models\`
-4. Проверьте размеры файлов:
-   - `det_10g.onnx` должен быть ~17 MB
-   - `w600k_r50.onnx` должен быть ~174 MB
+```bash
+pip install huggingface_hub
+
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
+```
+
+Windows (PowerShell):
+```powershell
+py -m pip install huggingface_hub
+py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
+py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
+```
+
+## Способ 3: Вручную через браузер
+
+1. Откройте [InsightFace model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l)
+2. Скачайте `det_10g.onnx` и `w600k_r50.onnx`
+3. Поместите оба файла в `./models/`
 
 ## Проверка
 
-После загрузки выполните:
-```powershell
-dir .\models\
+```bash
+ls -lh ./models/
 ```
 
 Ожидаемый результат:
 ```
-det_10g.onnx       ~17,000,000 bytes
-w600k_r50.onnx     ~174,000,000 bytes
-```
-
-## Альтернатива: через pip
-
-```powershell
-# Установите утилиту для загрузки
-py -m pip install insightface-models
-
-# Загрузите модели
-py -c "import insightface_models; insightface_models.download('buffalo_l', output_dir='./models')"
+det_10g.onnx      ~17M
+w600k_r50.onnx   ~174M
 ```
 
 ## После загрузки
 
-Запустите проект:
-```powershell
-.\face-grouper.exe --gpu --serve
+```bash
+# Linux / macOS
+./face-grouper --serve
+
+# Windows
+.\face-grouper.exe --serve
 ```

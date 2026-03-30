@@ -13,3 +13,6 @@ runtime/
 .env
 .cursor/
 .qwen/
+.vscode/
+.claude/
+.idea/

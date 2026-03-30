@@ -259,8 +259,8 @@ docker-compose up -d --build
 | `FORCE_CPU` | `0` | Force CPU usage |
 | `PROVIDER_PRIORITY` | `auto` | Provider: auto, cpu, cuda, rocm |
 | `EXTRACT_WORKERS` | `4` | Number of extraction workers |
-| `GPUDet_SESSIONS` | `2` | GPU detector sessions |
-| `GPURecSessions` | `2` | GPU recognizer sessions |
+| `GPU_DET_SESSIONS` | `2` | GPU detector sessions |
+| `GPU_REC_SESSIONS` | `2` | GPU recognizer sessions |
 | `EMBED_BATCH_SIZE` | `64` | Embedding batch size |
 | `LOG_LEVEL` | `info` | Log level: debug, info, warn, error |
 | `LOG_JSON` | `false` | JSON format logs |
@@ -463,8 +463,8 @@ docker logs -f face-grouper-cpu 2>&1 | grep -i error
 |-----------|-----|-----------------|-----------------|
 | `EXTRACT_WORKERS` | 4 | 8 | 16 |
 | `EMBED_BATCH_SIZE` | 32 | 64 | 128 |
-| `GPUDet_SESSIONS` | N/A | 2 | 4 |
-| `GPURecSessions` | N/A | 2 | 4 |
+| `GPU_DET_SESSIONS` | N/A | 2 | 4 |
+| `GPU_REC_SESSIONS` | N/A | 2 | 4 |
 
 ---
 

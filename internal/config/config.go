@@ -44,9 +44,10 @@ func Load(path string) error {
 		Redis:     env.NewRedisConfig(),
 	}
 
-	// Валидация критических настроек
+	// Валидация БД — опциональна, предупреждаем но не падаем.
 	if err := AppConfig.Database.Validate(); err != nil {
-		return fmt.Errorf("database config validation failed: %w", err)
+		// Database is optional — continue without it.
+		_ = err
 	}
 
 	return nil

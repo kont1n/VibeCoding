@@ -154,11 +154,11 @@ func NewLoggerConfig() LoggerConfig {
 // NewDatabaseConfig создаёт конфигурацию базы данных из ENV.
 func NewDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
-		Host:              requireEnv("DB_HOST"),
+		Host:              getEnv("DB_HOST", ""),
 		Port:              getInt("DB_PORT", 5432),
-		Database:          requireEnv("DB_NAME"),
-		User:              requireEnv("DB_USER"),
-		Password:          requireEnv("DB_PASSWORD"),
+		Database:          getEnv("DB_NAME", ""),
+		User:              getEnv("DB_USER", ""),
+		Password:          getEnv("DB_PASSWORD", ""),
 		SSLMode:           getEnv("DB_SSLMODE", "disable"),
 		MaxConns:          getInt("DB_MAX_CONNS", 25),
 		MinConns:          getInt("DB_MIN_CONNS", 5),

@@ -1,99 +1,155 @@
 # Быстрый старт
 
-## 1. Установка зависимостей
+## 1. Требования
 
-### ONNX Runtime GPU (автоматически при запуске)
-Скрипт `run-gpu-simple.ps1` автоматически загрузит ONNX Runtime GPU при первом запуске.
+- Go 1.24+
+- ONNX Runtime shared library
+- InsightFace модели (`det_10g.onnx`, `w600k_r50.onnx`)
 
-### Модели InsightFace
+## 2. Загрузка моделей InsightFace
 
-**Вариант A: Через Python (рекомендуется)**
-```powershell
-py -m pip install huggingface_hub
-py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
-py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
+```bash
+pip install huggingface_hub
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
 ```
 
-**Вариант B: Вручную**
-1. Скачайте с https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l
-2. Поместите `det_10g.onnx` и `w600k_r50.onnx` в `./models/`
-
-## 2. Сборка
-
-```powershell
-go build -o face-grouper.exe .
+Или через скрипт:
+```bash
+python scripts/download_models.py
 ```
 
-## 3. Запуск на GPU
+## 3. ONNX Runtime
 
-### Базовый запуск
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu-simple.ps1 -InputDir .\dataset -OutputDir .\output
+Скачайте с [github.com/microsoft/onnxruntime/releases](https://github.com/microsoft/onnxruntime/releases) и поместите в корень проекта:
+
+| ОС | Файл | Архив |
+|----|------|-------|
+| Linux | `libonnxruntime.so` | `onnxruntime-linux-x64-*.tgz` |
+| macOS | `libonnxruntime.dylib` | `onnxruntime-osx-*.tgz` |
+| Windows (CPU) | `onnxruntime.dll` | `onnxruntime-win-x64-*.zip` |
+| Windows (GPU) | `onnxruntime.dll` | `onnxruntime-win-x64-gpu-*.zip` |
+
+## 4. Сборка
+
+```bash
+# Linux / macOS
+go build -o face-grouper ./cmd
+
+# Windows
+go build -o face-grouper.exe ./cmd
 ```
 
-### С веб-интерфейсом
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-gpu-simple.ps1 -Serve
+## 5. Добавьте фотографии
+
+```bash
+cp /path/to/your/photos/* ./dataset/
 ```
 
-### Прямой запуск (если ONNX Runtime уже загружен)
-```powershell
-.\face-grouper.exe --gpu --serve
+## 6. Запуск
+
+### CPU (базовый)
+
+```bash
+# Linux / macOS
+./face-grouper --serve
+
+# Windows
+.\face-grouper.exe --serve
 ```
 
-## 4. Просмотр результатов
+### GPU (NVIDIA CUDA)
 
-После обработки:
-- Откройте браузер: http://localhost:8080
-- Результаты в папке `./output/Person_N/`
+В `.env` или через флаг:
+```bash
+./face-grouper --gpu --serve
+```
 
-## 5. Параметры
+### Просмотр результатов
+
+```bash
+./face-grouper --view
+```
+
+Откройте браузер: http://localhost:8080
+
+## 7. Параметры
 
 | Параметр | По умолчанию | Описание |
 |----------|-------------|----------|
 | `--input` | `./dataset` | Папка с фотографиями |
 | `--output` | `./output` | Папка результатов |
-| `--gpu` | ❌ | Использовать GPU |
-| `--serve` | ❌ | Запустить веб-интерфейс |
-| `--workers` | 4 | Количество воркеров |
-| `--gpu-det-sessions` | 2 | Detector сессии на GPU |
-| `--gpu-rec-sessions` | 2 | Recognizer сессии на GPU |
-| `--embed-batch-size` | 64 | Размер батча распознавания |
-| `--threshold` | 0.5 | Порог сходства лиц |
+| `--gpu` | `false` | Использовать GPU |
+| `--serve` | `false` | Запустить веб-интерфейс |
+| `--view` | `false` | Только просмотр (без обработки) |
+| `--workers` | `4` | Количество воркеров (CPU) |
+| `--gpu-det-sessions` | `2` | Detector сессии на GPU |
+| `--gpu-rec-sessions` | `2` | Recognizer сессии на GPU |
+| `--embed-batch-size` | `64` | Размер батча распознавания |
+| `--threshold` | `0.5` | Порог сходства лиц (0.0–1.0) |
+| `--det-thresh` | `0.5` | Порог детекции лиц |
+| `--max-dim` | `1920` | Макс. размер изображения (0 = без ресайза) |
 
-### Рекомендации по порогу (`--threshold`)
+## 8. REST API (при запуске с --serve)
+
+Помимо веб-интерфейса, сервер предоставляет REST API:
+
+```bash
+# Запуск асинхронной обработки
+curl -X POST http://localhost:8080/api/v1/sessions/my-job/process \
+  -H "Content-Type: application/json" \
+  -d '{"input_dir": "./dataset"}'
+
+# Статус обработки
+curl http://localhost:8080/api/v1/sessions/my-job/status
+
+# SSE прогресс
+curl -N http://localhost:8080/api/v1/sessions/my-job/stream
+
+# Список персон (с пагинацией)
+curl "http://localhost:8080/api/v1/persons?offset=0&limit=20"
+
+# Health check
+curl http://localhost:8080/health
+```
+
+## Рекомендации по порогу (`--threshold`)
 
 | Сценарий | Порог | Пример |
 |----------|-------|--------|
 | **Много разных людей** | 0.30-0.35 | Семейный альбом за годы |
 | **Смешанный набор** | 0.40-0.45 | Корпоратив с сотрудниками |
-| **Один человек** | 0.50-0.60 | Фото с одного мероприятия |
+| **По умолчанию** | 0.50 | Универсальный вариант |
+| **Один человек** | 0.55-0.60 | Фото с одного мероприятия |
 
-```powershell
-# Пример: строгая группировка (много разных людей)
-.\scripts\run-gpu-simple.ps1 -Threshold 0.35
+## Настройка для GPU (RTX 4090/5090)
 
-# Пример: один человек (фото с мероприятия)
-.\scripts\run-gpu-simple.ps1 -Threshold 0.55
-```
-
-### Пример тюнинга для RTX 4090/5090
-```powershell
-.\scripts\run-gpu-simple.ps1 -GpuDetSessions 4 -GpuRecSessions 4 -EmbedBatchSize 128 -Serve
+```bash
+./face-grouper --gpu --gpu-det-sessions 4 --gpu-rec-sessions 4 --embed-batch-size 128 --serve
 ```
 
 ## Troubleshooting
 
 ### "ONNX Runtime not found"
-Скрипт `run-gpu-simple.ps1` загрузит его автоматически в `./runtime/`
 
-### "CUDA DLLs missing"
-```powershell
-py -m pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12
-```
+Убедитесь, что `libonnxruntime.so` / `onnxruntime.dll` находится в корне проекта или в `PATH`/`LD_LIBRARY_PATH`.
 
 ### "Models not found"
-См. раздел 1 выше — загрузите модели в `./models/`
+
+Проверьте наличие файлов:
+```bash
+ls -la ./models/
+# Ожидается:
+# det_10g.onnx    ~17 MB
+# w600k_r50.onnx  ~174 MB
+```
 
 ### "No images found"
-Поместите фотографии в `./dataset/` или укажите `--input <путь>`
+
+Поместите фотографии (`.jpg`, `.jpeg`, `.png`) в `./dataset/` или укажите `--input <путь>`.
+
+### Ошибки CUDA (Windows)
+
+```powershell
+pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12
+```

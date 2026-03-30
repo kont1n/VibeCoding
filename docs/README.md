@@ -2,106 +2,80 @@
 
 Welcome to the Face Grouper documentation hub.
 
-## 📚 Documentation Index
+## Documentation Index
 
 ### Getting Started
 
 | Document | Description |
 |----------|-------------|
-| [Quick Start](QUICKSTART.md) | Get up and running in 5 minutes |
-| [Download Models](DOWNLOAD_MODELS.md) | How to download InsightFace models |
-| [README](../README.md) | Main project documentation |
+| [Quick Start](QUICKSTART.md) | Запуск за 5 минут |
+| [Download Models](DOWNLOAD_MODELS.md) | Загрузка InsightFace моделей |
+| [README](../README.md) | Основная документация проекта |
 
 ### Deployment
 
 | Document | Description |
 |----------|-------------|
-| [Docker Guide](DOCKER.md) | Complete Docker deployment guide |
-| [GPU Setup](#gpu-setup) | NVIDIA GPU configuration |
-| [AMD ROCm](#amd-rocm) | AMD GPU configuration |
-
-### Development
-
-| Document | Description |
-|----------|-------------|
-| [Architecture](ARCHITECTURE.md) | System architecture overview |
-| [API Reference](API.md) | API documentation |
-| [Testing Guide](TESTING.md) | Testing best practices |
+| [Docker Guide](DOCKER.md) | Полное руководство по Docker |
+| [Database Guide](DATABASE.md) | PostgreSQL + pgvector интеграция |
 
 ---
 
-## 🚀 Quick Links
+## Quick Links
 
-**New to Face Grouper?**
-1. Start with [Quick Start](QUICKSTART.md)
-2. Download models using [Download Guide](DOWNLOAD_MODELS.md)
-3. Run your first grouping!
+**Новый пользователь?**
+1. Начните с [Quick Start](QUICKSTART.md)
+2. Загрузите модели по [инструкции](DOWNLOAD_MODELS.md)
+3. Запустите обработку
 
-**Want to use Docker?**
-- Check out the [Docker Guide](DOCKER.md)
-- Supports CPU, NVIDIA GPU, and AMD ROCm
+**Docker?**
+- [Docker Guide](DOCKER.md) — CPU, NVIDIA GPU, AMD ROCm
 
-**Developer?**
-- Read [Architecture](ARCHITECTURE.md) docs
-- Check [Testing Guide](TESTING.md)
-- Review [API Reference](API.md)
+**PostgreSQL?**
+- [Database Guide](DATABASE.md) — опциональная интеграция, векторный поиск
 
 ---
 
-## 📖 Documentation Structure
+## Quick Reference
+
+### Основные команды
+
+```bash
+task build           # Сборка
+task test            # Тесты
+task lint            # Линтинг
+task docker:run      # Docker запуск
+task benchmark       # Бенчмарки
+```
+
+### Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|------------|-------------|----------|
+| `INPUT_DIR` | `./dataset` | Директория с фотографиями |
+| `OUTPUT_DIR` | `./output` | Директория результатов |
+| `MODELS_DIR` | `./models` | Директория с моделями |
+| `GPU_ENABLED` | `0` | Включить GPU (1/0) |
+| `EXTRACT_WORKERS` | `4` | Количество воркеров |
+| `CLUSTER_THRESHOLD` | `0.5` | Порог кластеризации |
+| `WEB_SERVE` | `false` | Запускать веб-интерфейс |
+| `WEB_PORT` | `8080` | Порт веб-сервера |
+| `DB_HOST` | — | PostgreSQL хост (опционально) |
+
+### Структура документации
 
 ```
 docs/
-├── README.md                 # This file - Documentation index
-├── QUICKSTART.md             # Quick start guide
-├── DOWNLOAD_MODELS.md        # Model download instructions
-├── DOCKER.md                 # Docker deployment guide
-├── ARCHITECTURE.md           # System architecture (TODO)
-├── API.md                    # API reference (TODO)
-└── TESTING.md                # Testing guide (TODO)
+├── README.md              # Этот файл
+├── QUICKSTART.md          # Быстрый старт
+├── DOWNLOAD_MODELS.md     # Загрузка моделей
+├── DOCKER.md              # Docker руководство
+└── DATABASE.md            # PostgreSQL интеграция
 ```
 
 ---
 
-## 🔧 Quick Reference
-
-### Basic Commands
-
-```bash
-# Build
-task build
-
-# Test
-task test
-
-# Lint
-task lint
-
-# Docker build
-task build:all
-
-# Run Docker
-task docker:run
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `INPUT_DIR` | `./dataset` | Input directory |
-| `OUTPUT_DIR` | `./output` | Output directory |
-| `MODELS_DIR` | `./models` | Models directory |
-| `GPU_ENABLED` | `0` | Enable GPU |
-| `EXTRACT_WORKERS` | `4` | Worker count |
-
----
-
-## 📞 Support
+## Support
 
 - **Issues:** [GitHub Issues](https://github.com/kont1n/face-grouper/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/kont1n/face-grouper/discussions)
-- **Main README:** [../README.md](../README.md)
-
----
-
-*Last updated: March 2026*

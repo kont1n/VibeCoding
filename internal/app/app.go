@@ -332,5 +332,14 @@ func (a *App) runWebUI(ctx context.Context, outputDir string, port int) error {
 		zap.String("output_dir", outputDir),
 		zap.Int("port", port),
 	)
-	return web.Serve(outputDir, port)
+
+	pipeline := NewPipeline(a.diContainer)
+
+	srv := web.NewServer(web.ServerConfig{
+		Port:      port,
+		OutputDir: outputDir,
+		DB:        a.diContainer.db,
+	}, pipeline)
+
+	return srv.ListenAndServe()
 }

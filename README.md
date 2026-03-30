@@ -8,7 +8,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/kont1n/face-grouper)](https://goreportcard.com/report/github.com/kont1n/face-grouper)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kont1n/face-grouper.svg)](https://pkg.go.dev/github.com/kont1n/face-grouper)
 
-Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python и OpenCV. Поддерживает GPU-ускорение (CUDA), BLAS-ускоренную кластеризацию, генерацию миниатюр лиц, алгоритмический выбор аватара и веб-интерфейс для просмотра результатов.
+Сервис для автоматической группировки фотографий по людям. Анализирует изображения при помощи нейросетевых моделей [InsightFace](https://github.com/deepinsight/insightface) (SCRFD + ArcFace) через ONNX Runtime, извлекает face embeddings и кластеризует лица по косинусному сходству. Полностью нативная Go-реализация без зависимости от Python и OpenCV. Поддерживает GPU-ускорение (CUDA, ROCm), BLAS-ускоренную кластеризацию, асинхронную обработку через REST API с SSE-стримингом прогресса, опциональную PostgreSQL интеграцию и веб-интерфейс.
 
 ## Особенности
 
@@ -23,7 +23,7 @@
 - [Docker Deployment](docs/DOCKER.md)
 - [Quick Start](docs/QUICKSTART.md)
 - [Download Models](docs/DOWNLOAD_MODELS.md)
-- [Database Guide](docs/DATABASE.md) ⭐ NEW
+- [Database Guide](docs/DATABASE.md)
 - [Documentation Index](docs/README.md)
 - [GPU Setup](docs/DOCKER.md#gpu-support)
 
@@ -36,31 +36,49 @@ cmd/
 └── main.go                    # Точка входа (DI, graceful shutdown)
 
 internal/
-├── api/cli/                   # CLI API handlers
+├── api/
+│   ├── cli/                   # CLI API (Scan, Extract, Cluster, Organize)
+│   └── http/
+│       ├── handler/           # HTTP обработчики (session, person, upload, health)
+│       └── middleware/        # Recovery, RateLimit, CORS, RequestLogger
 ├── app/                       # Приложение + DI контейнер
-│   ├── app.go
-│   └── di.go
+│   ├── app.go                 # Основная оркестрация
+│   ├── di.go                  # Dependency Injection
+│   └── pipeline.go            # Асинхронный pipeline runner (SSE)
 ├── config/                    # Конфигурация (.env + ENV)
 │   ├── config.go
 │   └── env/
-├── database/                  # PostgreSQL интеграция
-│   ├── database.go           # DB connection & repositories
-│   ├── migrations.go         # Auto-migrations
-│   └── postgres/             # Connection pool & health
+├── database/                  # PostgreSQL интеграция (опционально)
+│   ├── database.go            # DB connection & repositories
+│   ├── migrations.go          # Auto-migrations
+│   └── postgres/              # Connection pool & health
+├── infrastructure/
+│   └── ml/                    # ONNX Runtime inference
+│       ├── provider/          # CPU/CUDA/ROCm провайдеры
+│       ├── detector.go        # SCRFD детектор
+│       ├── recognizer.go      # ArcFace распознавание
+│       └── align.go           # Umeyama выравнивание
 ├── model/                     # Доменные модели (Face, Cluster)
 ├── repository/                # Слой доступа к данным
-│   ├── filesystem/           # Сканирование файлов
-│   ├── inference/            # ONNX Runtime inference
-│   └── postgres/             # PostgreSQL repositories
+│   ├── filesystem/            # Сканирование файловой системы
+│   └── postgres/              # PostgreSQL repositories
 ├── service/                   # Бизнес-логика
-│   ├── scan/                 # Сканирование директорий
-│   ├── extraction/           # Извлечение эмбеддингов
-│   ├── clustering/           # Кластеризация лиц
-│   └── organization/         # Организация результатов
-└── ...
+│   ├── scan/                  # Сканирование директорий
+│   ├── extraction/            # Извлечение embeddings (worker pool, batcher)
+│   ├── clustering/            # Кластеризация лиц
+│   └── organization/          # Организация результатов (Person_N/, аватары)
+├── clustering/                # Union-Find + BLAS матрица сходства
+├── organizer/                 # Организация вывода
+├── avatar/                    # Выбор аватара по quality score
+├── imageutil/                 # Чистый Go: resize, crop, WarpAffine, NCHW
+├── report/                    # JSON-отчёт о обработке
+├── domain/                    # Доменные ошибки
+└── web/                       # HTTP сервер
+    ├── server.go              # Маршруты, middleware, graceful shutdown
+    └── index.html             # SPA (встроен через embed)
 
 platform/pkg/                  # Платформенные пакеты
-├── closer/                    # Graceful shutdown
+├── closer/                    # Graceful shutdown с таймаутом
 └── logger/                    # Zap logger wrapper
 ```
 
@@ -68,11 +86,13 @@ platform/pkg/                  # Платформенные пакеты
 
 | Слой | Ответственность |
 |------|----------------|
-| **API** | Обработка CLI команд, маппинг запросов |
+| **API/HTTP** | REST обработчики, маппинг запросов, SSE стриминг |
+| **API/CLI** | CLI координация: Scan → Extract → Cluster → Organize |
 | **Service** | Бизнес-логика, координация между репозиториями |
-| **Repository** | Доступ к данным (файлы, ONNX inference) |
-| **Model** | Доменные модели (Face, Cluster) |
-| **Config** | Конфигурация приложения |
+| **Infrastructure/ML** | ONNX Runtime inference (детекция, распознавание, выравнивание) |
+| **Repository** | Доступ к данным (файлы, PostgreSQL) |
+| **Model** | Доменные модели (Face, Cluster, Person) |
+| **Config** | Конфигурация приложения (.env + ENV) |
 | **Platform** | Инфраструктурные компоненты (logger, closer) |
 
 ## Как это работает
@@ -86,7 +106,7 @@ flowchart LR
     E --> F["Кластеризация\n(Union-Find +\nBLAS matrix mul)"]
     F --> G["Организация\nPerson_N/ + thumb.jpg"]
     G --> H["report.json\n+ processing.log"]
-    H --> I["Web UI\n:8080"]
+    H --> I["Web UI + REST API\n:8080"]
     G --> J["Оценка качества лица\n(Area × Sharpness × FrontalPose)"]
     J --> H
 ```
@@ -101,87 +121,82 @@ flowchart LR
 6. **Кластеризация** — Go вычисляет матрицу косинусного сходства через BLAS-ускоренное блочное матричное перемножение (gonum) и группирует лица через Union-Find (disjoint set с path compression и union by rank)
 7. **Организация** — для каждого кластера создается папка `Person_N/` с символическими ссылками на оригиналы и лучшей миниатюрой лица (`thumb.jpg`); при совпадающих именах файлов применяется уникализация
 8. **Выбор аватара** — для каждой персоны выбирается лучший crop по формуле `Score = Area × Sharpness × FrontalPoseFactor`; обновление выполняется только при приросте качества выше порога
-9. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`) c `avatar_path` и `quality_score`
-10. **Веб-интерфейс (опционально)** — Go HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов в браузере
+9. **Отчёт** — сохраняется JSON-отчёт (`report.json`) и лог обработки (`processing.log`)
+10. **Веб-интерфейс (опционально)** — Go HTTP-сервер с REST API, SSE-стримингом прогресса и graceful shutdown
 
 > Если на фото несколько людей — оно появится в нескольких папках `Person_N/`.
 
 > На **Windows** для создания символических ссылок необходим Developer Mode или запуск от имени администратора.
+
+## REST API
+
+Веб-сервер предоставляет полноценный REST API.
+
+### Системные эндпоинты
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/health` | Health check (статус сервера + БД) |
+| `GET` | `/ready` | Readiness probe (Kubernetes) |
+| `GET` | `/api/report` | JSON-отчёт последней обработки |
+| `GET` | `/output/*` | Статические файлы результатов |
+
+### Обработка (Sessions)
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/api/v1/sessions/{id}/process` | Запуск асинхронного пайплайна |
+| `GET` | `/api/v1/sessions/{id}/status` | Статус сессии |
+| `GET` | `/api/v1/sessions/{id}/stream` | SSE: стриминг прогресса в реальном времени |
+| `GET` | `/api/v1/sessions/{id}/errors` | Ошибки сессии |
+
+**Запуск обработки:**
+```json
+POST /api/v1/sessions/my-session-1/process
+{ "input_dir": "./dataset" }
+
+Response 202:
+{ "session_id": "my-session-1", "status": "processing" }
+```
+
+**SSE Events** (`GET /api/v1/sessions/{id}/stream`):
+```
+data: {"session_id":"my-session-1","stage":"extract","stage_label":"Обнаружение лиц...","progress":0.5,"done":false,"elapsed_ms":12340}
+data: {"session_id":"my-session-1","stage":"cluster","progress":1.0,"done":true,"elapsed_ms":45000}
+```
+
+### Персоны
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/api/v1/persons` | Список персон (с пагинацией: `?offset=0&limit=50`) |
+| `GET` | `/api/v1/persons/{id}` | Детали персоны |
+| `PUT` | `/api/v1/persons/{id}` | Переименование (требует БД) |
+| `GET` | `/api/v1/persons/{id}/photos` | Фотографии персоны (с пагинацией) |
+| `GET` | `/api/v1/persons/{id}/relations` | Граф связей (требует БД; `?min_similarity=0.5`) |
+
+### Загрузка
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/api/v1/upload` | Загрузка изображений (макс. 500MB) |
+
+> **Примечание:** Эндпоинты, помеченные "требует БД", возвращают `503 Service Unavailable` без PostgreSQL. Эндпоинты `GET /persons` и `GET /persons/{id}/photos` автоматически деградируют до `report.json` при отсутствии БД.
 
 ## Требования
 
 | Компонент | Версия | Примечание |
 |-----------|--------|------------|
 | Go | 1.24+ | Основной язык |
-| ONNX Runtime | 1.24+ | CPU или GPU версия |
+| ONNX Runtime | 1.20+ | CPU или GPU версия |
 | ОС | Windows / Linux / macOS | |
 | GPU (опционально) | NVIDIA + CUDA 11.8+ | Для GPU-ускорения |
 | cuDNN (опционально) | 8.x | Для GPU-ускорения |
-| **PostgreSQL (опционально)** | **16+ с pgvector** | **Для персистентного хранения** |
+| PostgreSQL (опционально) | 16+ с pgvector | Для персистентного хранения |
 
-> **Примечание:** С версии 0.2 проект использует чистый Go для обработки изображений и больше не требует OpenCV/gocv.
+> **Примечание:** Проект использует чистый Go для обработки изображений и не требует OpenCV/gocv.
 
-### PostgreSQL Integration ⭐ NEW
-
-Для работы с базой данных требуется:
-
-1. **PostgreSQL 16+** — https://www.postgresql.org/download/
-2. **pgvector** — расширение для векторного поиска
-
-**Быстрый старт с Docker:**
-
-```bash
-# Запуск PostgreSQL с pgvector
-docker run -d --name face-grouper-db \
-  -e POSTGRES_DB=face-grouper \
-  -e POSTGRES_USER=face-grouper \
-  -e POSTGRES_PASSWORD=secret \
-  -p 5432:5432 \
-  pgvector/pgvector:pg16
-
-# Настройка .env
-echo "DB_HOST=localhost" >> .env
-echo "DB_PASSWORD=secret" >> .env
-echo "DB_RUN_MIGRATIONS=true" >> .env
-```
-
-**Возможности:**
-- ✅ Персистентное хранение результатов
-- ✅ Векторный поиск похожих лиц (cosine similarity)
-- ✅ Full-text search по именам (русский язык)
-- ✅ Граф связей между персонами
-- ✅ Трекинг сессий обработки
-- ✅ Auto-migrations при старте
-
-📖 **Подробная документация:** [docs/DATABASE.md](docs/DATABASE.md)
-
-### Требования для GPU режима
-
-Для работы на GPU требуется:
-
-1. **NVIDIA GPU** с поддержкой CUDA (Compute Capability 5.0+)
-2. **CUDA Toolkit 11.8** — https://developer.nvidia.com/cuda-11-8-0-download-archive
-3. **cuDNN 8.x** — https://developer.nvidia.com/cudnn (требуется регистрация)
-4. **ONNX Runtime GPU** — скачать с https://github.com/microsoft/onnxruntime/releases
-
-**Установка CUDA и cuDNN на Windows:**
-
-```powershell
-# 1. Установите CUDA Toolkit 11.8
-# Скачайте с https://developer.nvidia.com/cuda-11-8-0-download-archive
-
-# 2. Установите cuDNN
-# 1. Скачайте cuDNN 8.x для CUDA 11.8
-# 2. Распакуйте архив
-# 3. Скопируйте файлы из bin/ в C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin
-
-# 3. Добавьте CUDA в PATH (если не добавлено автоматически)
-$env:Path += ";C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin"
-$env:Path += ";C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\libnvvp"
-```
-
-> **Примечание:** После установки CUDA перезапустите терминал.
-
+> **Примечание:** PostgreSQL опционален — приложение запускается и без него, читая данные из `report.json`.
 
 ## Установка
 
@@ -190,8 +205,6 @@ $env:Path += ";C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\libnvvp"
 Создайте файл `.env` в корне проекта (или используйте `.env.example` как шаблон):
 
 ```bash
-# Face Grouper Configuration
-
 # === Application ===
 INPUT_DIR=./dataset
 OUTPUT_DIR=./output
@@ -223,6 +236,15 @@ WEB_VIEW_ONLY=false
 # === Logger ===
 LOG_LEVEL=info
 LOG_JSON=false
+
+# === Database (опционально) ===
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_NAME=face-grouper
+# DB_USER=face-grouper
+# DB_PASSWORD=secret
+# DB_SSLMODE=disable
+# DB_RUN_MIGRATIONS=true
 ```
 
 ### 2. ONNX Runtime
@@ -234,69 +256,56 @@ LOG_JSON=false
 - **Linux**: `libonnxruntime.so` (из `onnxruntime-linux-x64-*.tgz`)
 - **macOS**: `libonnxruntime.dylib` (из `onnxruntime-osx-*.tgz`)
 
-Поместите библиотеку в:
-- **CPU**: корень проекта или любую директорию в PATH
-- **GPU**: `./runtime/onnxruntime-win-x64-gpu-*/lib/onnxruntime.dll`
+Поместите библиотеку в корень проекта или любую директорию в `PATH`/`LD_LIBRARY_PATH`.
 
 ### 3. ONNX-модели InsightFace
 
-Скачайте модели из [InsightFace model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l) (пакет `buffalo_l`):
+Скачайте модели из пакета `buffalo_l`:
 
 - `det_10g.onnx` (~17 MB) — SCRFD детектор лиц
 - `w600k_r50.onnx` (~174 MB) — ArcFace распознавание лиц
 
-**Способ 1: Вручную через браузер**
-1. Откройте https://github.com/deepinsight/insightface/tree/master/model_zoo#buffalo_l
-2. Скачайте `det_10g.onnx` и `w600k_r50.onnx`
-3. Поместите в `./models/`
-
-**Способ 2: Через Python (рекомендуется)**
-```powershell
-py -m pip install huggingface_hub
-py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
-py -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
+**Через Python (рекомендуется):**
+```bash
+pip install huggingface_hub
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/det_10g.onnx', local_dir='./models')"
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('deepinsight/insightface', 'buffalo_l/w600k_r50.onnx', local_dir='./models')"
 ```
+
+**Через скрипт:**
+```bash
+python scripts/download_models.py
+```
+
+Подробнее: [docs/DOWNLOAD_MODELS.md](docs/DOWNLOAD_MODELS.md)
 
 ### 4. Сборка проекта
 
-**Windows:**
-```powershell
+```bash
+# Linux / macOS
+go build -o face-grouper ./cmd
+
+# Windows
 go build -o face-grouper.exe ./cmd
 ```
 
-**Linux / macOS:**
-```bash
-go build -o face-grouper ./cmd
-```
-
-> **Примечание:** Для сборки больше не требуется MSYS2/OpenCV. Только Go компилятор.
-
 ## Запуск
 
-### CPU режим (базовый)
+### Режимы работы
 
 ```bash
-# Базовый запуск
-.\face-grouper.exe
+# Обработка с последующим просмотром в браузере
+./face-grouper --serve
 
-# С веб-интерфейсом
-.\face-grouper.exe --serve
+# Только обработка (без веб-интерфейса)
+./face-grouper
 
-# Просмотр предыдущих результатов
-.\face-grouper.exe --view
+# Просмотр предыдущих результатов (без повторной обработки)
+./face-grouper --view
+
+# GPU режим
+./face-grouper --serve  # GPU_ENABLED=1 в .env или --gpu флаг
 ```
-
-### GPU режим (требует CUDA)
-
-```bash
-# Запуск на GPU
-.\face-grouper.exe
-
-# GPU + веб-интерфейс
-.\face-grouper.exe --serve
-```
-
-> **Важно:** Для GPU режима необходимо установить CUDA Toolkit 11.8+ и cuDNN 8.x
 
 ### CLI флаги
 
@@ -306,171 +315,20 @@ go build -o face-grouper ./cmd
 | `--output` | `OUTPUT_DIR` | `./output` | Директория для результатов |
 | `--models-dir` | `MODELS_DIR` | `./models` | Директория с ONNX-моделями |
 | `--workers` | `EXTRACT_WORKERS` | `4` | Количество воркеров (CPU) |
+| `--gpu` | `GPU_ENABLED` | `false` | Использовать GPU |
 | `--gpu-det-sessions` | `GPU_DET_SESSIONS` | `2` | Detector сессий (GPU) |
 | `--gpu-rec-sessions` | `GPU_REC_SESSIONS` | `2` | Recognizer сессий (GPU) |
 | `--embed-batch-size` | `EMBED_BATCH_SIZE` | `64` | Размер батча распознавания |
 | `--embed-flush-ms` | `EMBED_FLUSH_MS` | `10` | Таймаут flush батча (мс) |
-| `--threshold` | `CLUSTER_THRESHOLD` | `0.5` | Порог кластеризации |
+| `--threshold` | `CLUSTER_THRESHOLD` | `0.5` | Порог кластеризации (0.0–1.0) |
 | `--det-thresh` | `DET_THRESH` | `0.5` | Порог детекции лиц |
-| `--max-dim` | `MAX_DIM` | `1920` | Макс. размер изображения |
+| `--max-dim` | `MAX_DIM` | `1920` | Макс. размер изображения (0 = без ресайза) |
 | `--avatar-update-threshold` | `AVATAR_UPDATE_THRESHOLD` | `0.10` | Порог обновления аватара |
 | `--serve` | `WEB_SERVE` | `false` | Запустить веб-интерфейс |
 | `--port` | `WEB_PORT` | `8080` | Порт веб-сервера |
 | `--view` | `WEB_VIEW_ONLY` | `false` | Только просмотр |
 
-> **Примечание:** Флаги имеют приоритет над `.env` файлом.
-
-## Тестирование и CI
-
-### Разработка с Taskfile
-
-Проект использует [Taskfile](https://taskfile.dev/) для автоматизации задач разработки.
-
-**Установка Task:**
-```bash
-# macOS
-brew install go-task
-
-# Windows (winget)
-winget install go-task
-
-# Linux
-snap install go-task
-
-# Или через go
-go install github.com/go-task/task/v3/cmd/task@latest
-```
-
-**Основные команды:**
-```bash
-# Показать все задачи
-task --list
-
-# Сборка приложения
-task build
-
-# Запуск тестов
-task test
-
-# Запуск линтеров
-task lint
-
-# Форматирование кода
-task format
-
-# Установка инструментов разработки
-task install-tools
-
-# Docker сборка
-task build:all
-
-# Запуск Docker контейнера
-task docker:run
-
-# Бенчмарки
-task benchmark
-
-# Очистка
-task clean
-```
-
-### Локальные тесты
-
-```bash
-# Юнит-тесты
-go test -v ./...
-
-# Тесты с покрытием
-go test -v -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-
-# Бенчмарки
-go test ./internal/clustering -bench BenchmarkCluster -benchmem
-```
-
-### Pre-commit хуки
-
-Проект использует [pre-commit](https://pre-commit.com/) для автоматических проверок.
-
-**Установка:**
-```bash
-# Установить pre-commit
-pip install pre-commit
-
-# Инициализировать хуки
-pre-commit install
-
-# Запустить все хуки
-pre-commit run --all-files
-```
-
-**Хуки выполняют:**
-- ✅ golangci-lint (линтинг кода)
-- ✅ go mod tidy (очистка зависимостей)
-- ✅ go test (тесты при push)
-- ✅ Проверка trailing whitespace
-- ✅ Проверка YAML/JSON
-- ✅ Secret detection
-- ✅ Dockerfile lint
-- ✅ Shell check
-
-### Инструменты разработки
-
-**Установка всех инструментов:**
-```bash
-# Скриптом
-./scripts/install-tools.sh
-
-# Или через Taskfile
-task install-tools
-```
-
-**Устанавливаемые инструменты:**
-- `golangci-lint` - Линтер
-- `mockery` - Генерация моков
-- `buf` - Работа с Protobuf
-- `grpcurl` - Тестирование gRPC
-- `gofumpt` - Форматирование
-- `gci` - Сортировка импортов
-- `gotestsum` - Улучшенный вывод тестов
-- `gosec` - Security сканирование
-
-### CI (GitHub Actions)
-
-В проекте настроен workflow `.github/workflows/docker-build.yml`, который запускается на `push` и `pull_request` и выполняет:
-- unit-тесты
-- lint с помощью golangci-lint
-- сборку Docker образов (CPU, GPU, ROCm)
-- security сканирование с Trivy
-- публикацию в GHCR
-
-В репозитории настроен workflow `.github/workflows/ci.yml`, который запускается на `push` и `pull_request` и выполняет:
-- unit-тесты `scanner/report/clustering`
-- compile-check `avatar/organizer/web`
-
-### Параметры CLI
-
-| Флаг | По умолчанию | Описание |
-|------|-------------|----------|
-| `--input` | `./dataset` | Директория с исходными фотографиями |
-| `--output` | `./output` | Директория для результатов группировки |
-| `--models-dir` | `./models` | Директория с ONNX-моделями (det_10g.onnx, w600k_r50.onnx) |
-| `--ort-lib` | *авто* | Путь к ONNX Runtime shared library |
-| `--workers` | `4` | Количество параллельных воркеров |
-| `--gpu-det-sessions` | `2` | Количество detector-сессий в GPU режиме |
-| `--gpu-rec-sessions` | `2` | Количество recognizer-сессий в GPU режиме |
-| `--embed-batch-size` | `64` | Размер межфайлового батча распознавания лиц |
-| `--embed-flush-ms` | `10` | Таймаут flush батча распознавания (мс) |
-| `--threshold` | `0.5` | Порог косинусного сходства для объединения лиц (0.0–1.0) |
-| `--det-thresh` | `0.5` | Порог уверенности детекции лиц |
-| `--gpu` | `false` | Использовать CUDA GPU для ONNX Runtime |
-| `--intra-threads` | `0` | Intra-op потоки ONNX Runtime (0 = default) |
-| `--inter-threads` | `0` | Inter-op потоки ONNX Runtime (0 = default) |
-| `--max-dim` | `1920` | Уменьшать изображения до N px по длинной стороне (0 = без ресайза) |
-| `--avatar-update-threshold` | `0.10` | Минимальный относительный прирост quality score для обновления аватара |
-| `--serve` | `false` | Запустить веб-интерфейс после обработки |
-| `--port` | `8080` | Порт веб-сервера |
-| `--view` | `false` | Только просмотр результатов (без обработки) |
+> **Примечание:** CLI флаги имеют приоритет над `.env` файлом.
 
 ### Пример вывода
 
@@ -481,8 +339,8 @@ Found 685 image(s)
 === Extracting face embeddings ===
 Mode: CPU, 4 worker(s)
 Pre-resize: max 1920px
-[1/685] C:\photos\TCF_001.jpeg — found 2 face(s)
-[2/685] C:\photos\TCF_002.jpeg — found 1 face(s)
+[1/685] photos/TCF_001.jpeg — found 2 face(s)
+[2/685] photos/TCF_002.jpeg — found 1 face(s)
 ...
 
 Total faces detected: 1247 (errors: 3)
@@ -501,6 +359,12 @@ Faces:   1247
 Persons: 42
 Errors:  3
 Time:    4m12s
+
+=== Stage timings ===
+Scan:           120ms
+Extract:        3m45s
+Cluster:        8s
+OrganizeAvatar: 19s
 Report:  ./output/report.json
 Log:     ./output/processing.log
 
@@ -511,141 +375,61 @@ Tip: run with --serve to view results in browser, or --view to view previous res
 
 Для каждой персоны вычисляется quality score по формуле:
 
-`Score = (Width * Height) * Sharpness * FrontalPoseFactor`
+`Score = (Width × Height) × Sharpness × FrontalPoseFactor`
 
-- `Width * Height` — площадь лица по bbox.
-- `Sharpness` — дисперсия лапласиана по crop лица.
-- `FrontalPoseFactor` — фактор фронтальности (по landmark-геометрии, ближе к 1 при меньшем повороте).
+- `Width × Height` — площадь лица по bbox
+- `Sharpness` — дисперсия лапласиана по crop лица (мера резкости)
+- `FrontalPoseFactor` — фактор фронтальности (по landmark-геометрии, ближе к 1 при меньшем повороте)
 
-Если при повторной обработке новый score не превосходит предыдущий минимум на `--avatar-update-threshold` (по умолчанию 10%), аватар не обновляется.
+Если при повторной обработке новый score не превосходит предыдущий на `--avatar-update-threshold` (по умолчанию 10%), аватар не обновляется.
 
 ## Веб-интерфейс
 
-Встроенный HTTP-сервер с graceful shutdown и тёмной темой для просмотра результатов:
+Встроенный HTTP-сервер с graceful shutdown (таймаут 10 сек) и тёмной темой:
 
 - Сетка карточек персон с миниатюрами лиц и количеством фото
-- Отображение выбранного алгоритмом аватара
-- Показ `quality_score` для контроля качества выбора
-- Просмотр всех фотографий персоны по клику с превью лица в заголовке
-- Кликабельный счётчик ошибок с детализацией (имя файла + текст ошибки)
+- Отображение выбранного алгоритмом аватара и `quality_score`
+- Просмотр всех фотографий персоны по клику
+- Кликабельный счётчик ошибок с детализацией
 - Полноэкранный просмотр фото
 - Адаптивная вёрстка
-- Корректное завершение по Ctrl+C (graceful shutdown с таймаутом 5 сек)
 
 Запуск: `--serve` (после обработки) или `--view` (просмотр готовых результатов).
 
-## Структура проекта
+### Middleware
 
-```
-face-grouper/
-├── cmd/                       # Точка входа (DI, graceful shutdown)
-│   └── main.go
-├── deploy/
-│   ├── docker/                # Docker файлы
-│   │   ├── Dockerfile         # CPU версия
-│   │   ├── Dockerfile.nvidia  # NVIDIA GPU версия
-│   │   ├── Dockerfile.rocm    # AMD ROCm версия
-│   │   └── docker-compose.yml # Docker Compose
-│   └── compose/               # Docker Compose файлы (future)
-├── docs/                      # Документация
-│   ├── README.md              # Индекс документации
-│   ├── DOCKER.md              # Docker руководство
-│   ├── QUICKSTART.md          # Быстрый старт
-│   └── DOWNLOAD_MODELS.md     # Загрузка моделей
-├── internal/                  # Внутренние пакеты
-│   ├── api/                   # API handlers
-│   ├── app/                   # Приложение + DI
-│   ├── config/                # Конфигурация
-│   ├── inference/             # ONNX Runtime inference
-│   ├── model/                 # Доменные модели
-│   ├── repository/            # Слой доступа к данным
-│   ├── service/               # Бизнес-логика
-│   └── web/                   # HTTP сервер
-├── platform/                  # Платформенные пакеты
-│   ├── closer/                # Graceful shutdown
-│   └── logger/                # Logger wrapper
-├── scripts/                   # Скрипты
-│   ├── install-tools.sh       # Установка инструментов
-│   ├── benchmark.sh           # Бенчмарки
-│   └── docker-build.sh        # Docker сборка
-├── tools/                     # Development tools
-├── dataset/                   # Входные фото
-├── models/                    # ONNX модели
-├── output/                    # Результаты
-├── runtime/                   # ONNX Runtime DLLs
-├── .dockerignore              # Docker ignore
-├── .golangci.yml              # Linter config
-├── .mockery.yaml              # Mock generation
-├── .pre-commit-config.yaml    # Pre-commit hooks
-├── docker-compose.yml         # Docker Compose
-├── go.mod                     # Go module
-├── go.work                    # Go workspace
-├── Taskfile.yml               # Task runner
-└── DOCKER.md                  # Docker documentation
+| Middleware | Параметры |
+|-----------|-----------|
+| Recovery | Перехват паник |
+| RateLimit | 100 rps sustained, 200 burst |
+| MaxBodySize | 500MB |
+| CORS | Все источники |
+| RequestLogger | Структурированный лог |
+
+## PostgreSQL (опционально)
+
+База данных опциональна — приложение работает и без неё, читая данные из `report.json`.
+
+**Быстрый старт:**
+```bash
+docker run -d --name face-grouper-db \
+  -e POSTGRES_DB=face-grouper \
+  -e POSTGRES_USER=face-grouper \
+  -e POSTGRES_PASSWORD=secret \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
 ```
 
-## Модули
+**Возможности при наличии БД:**
+- Персистентное хранение результатов (persons, faces, photos)
+- Векторный поиск похожих лиц через pgvector (cosine similarity)
+- Full-text search по именам (русский язык)
+- Граф связей между персонами
+- Переименование персон через API (`PUT /api/v1/persons/{id}`)
+- Трекинг сессий обработки
+- Auto-migrations при старте
 
-### `internal/service` — бизнес-логика
-
-- **`scan/`** — сканирование директорий с изображениями
-- **`extraction/`** — извлечение face embeddings (worker pool, batch inference)
-- **`clustering/`** — кластеризация лиц по косинусному сходству
-- **`organization/`** — организация результатов (Person_N/, аватары)
-
-### `internal/repository` — доступ к данным
-
-- **`filesystem/`** — сканирование файловой системы
-- **`inference/`** — ONNX Runtime inference (detector, recognizer)
-
-### `internal/inference` — нативный inference
-
-ONNX Runtime Go-биндинги для прямого запуска моделей InsightFace:
-
-- **`ort.go`** — инициализация/финализация ONNX Runtime, загрузка shared library, создание сессий с CPU/CUDA провайдерами
-- **`detector.go`** — SCRFD детектор: letterbox resize, нормализация (mean=127.5, std=128.0), NCHW конвертация, декодирование anchor-based выходов по 3 уровням FPN, фильтрация по порогу
-- **`recognizer.go`** — ArcFace: нормализация (mean=127.5, std=127.5), batch inference, L2-нормализация 512-мерных эмбеддингов
-- **`align.go`** — Umeyama similarity transform по 5 facial landmarks, WarpAffine на чистом Go (билинейная интерполяция) для выравнивания лица до 112x112
-- **`nms.go`** — greedy Non-Maximum Suppression с IoU threshold
-
-### `internal/imageutil` — обработка изображений на чистом Go
-
-- **`image.go`** — загрузка/сохранение JPEG, resize (билинейная интерполяция), blob conversion (NCHW), warp affine transform, crop
-
-### `internal/extractor` — оркестрация extraction pipeline
-
-Worker pool из горутин, каждый worker: загрузка изображения (чистый Go) → опциональный downscale (`--max-dim`) → SCRFD детекция → alignment по keypoints → отправка aligned-лиц в межфайловый batcher распознавания (`--embed-batch-size`, `--embed-flush-ms`) → сохранение thumbnail (crop + resize 160x160, JPEG q90).
-
-CPU-режим использует пул ONNX-сессий размером `workers`. GPU-режим использует отдельные пулы detector/recognizer сессий (`--gpu-det-sessions`, `--gpu-rec-sessions`) без глобальной блокировки inference.
-
-### `internal/model` — типы данных
-
-- **`Face`** — обнаруженное лицо: bounding box `[x1, y1, x2, y2]`, 512-мерный embedding, уверенность детекции, путь к миниатюре, путь к исходному файлу
-- **`Cluster`** — группа лиц одного человека
-
-### `internal/clustering` — кластеризация
-
-Строит матрицу L2-нормализованных embeddings и вычисляет косинусное сходство через блочное матричное перемножение (gonum BLAS `dgemm`). Блоки размером 512x512 обеспечивают эффективное использование CPU-кэша. Пары с сходством >= порога объединяются через Union-Find.
-
-### `internal/organizer` — организация результатов
-
-Создает директории `output/Person_N/`, сортирует кластеры по размеру. Создает символические ссылки на оригиналы (fallback на stream-copy). Выбирает лучший аватар по quality score (`Area × Sharpness × FrontalPoseFactor`) и сохраняет в `output/avatars/`. При коллизиях имён файлов применяется уникализация.
-
-### `internal/report` — отчёт
-
-Структурированный JSON-отчёт с метриками обработки.
-
-### `internal/web` — веб-интерфейс
-
-Встроенный HTTP-сервер (Go `net/http` + `embed`) с graceful shutdown.
-
-### `platform/pkg/closer` — graceful shutdown
-
-Механизм корректного завершения работы с таймаутом. Регистрирует ресурсы для закрытия при завершении приложения.
-
-### `platform/pkg/logger` — Zap logger wrapper
-
-Обёртка над Zap для структурированного логирования с поддержкой JSON и console форматов.
+Подробнее: [docs/DATABASE.md](docs/DATABASE.md)
 
 ## Настройка порога
 
@@ -656,23 +440,52 @@ CPU-режим использует пул ONNX-сессий размером `w
 | `0.30-0.35` | Очень строгая группировка, минимум ложных совпадений | Когда на фото много разных людей |
 | `0.40-0.45` | Строгая группировка, баланс точности | Для смешанных наборов фото |
 | `0.50` | Сбалансированный (по умолчанию) | Универсальный вариант |
-| `0.60-0.70` | Агрессивная группировка, больше ложных совпадений | Когда на фото один человек |
+| `0.60-0.70` | Агрессивная группировка, больше ложных совпадений | Когда на фото преимущественно один человек |
 
-> **Важно:** Для ArcFace/InsightFace модели типичные значения косинусного сходства:
-> - **Один человек:** 0.50-0.90
-> - **Разные люди:** 0.00-0.40
->
-> Если все фото с одного мероприятия (один человек), используйте порог **0.35-0.40**.
+> **Для ArcFace/InsightFace:** типичное косинусное сходство — один человек: 0.50-0.90, разные люди: 0.00-0.40.
 
 Рекомендуется начать с `0.50` и корректировать по результатам.
+
+## Тестирование и CI
+
+### Разработка с Taskfile
+
+```bash
+task build           # Сборка приложения
+task test            # Запуск тестов
+task lint            # golangci-lint
+task format          # gofumpt + gci
+task install-tools   # Установка инструментов разработки
+task docker:run      # Запуск Docker контейнера
+task benchmark       # Бенчмарки CPU vs GPU
+task clean           # Очистка
+```
+
+### Локальные тесты
+
+```bash
+go test ./...
+go test -v -coverprofile=coverage.out ./...
+go test ./internal/clustering -bench BenchmarkCluster -benchmem
+```
+
+### CI (GitHub Actions)
+
+- `.github/workflows/ci.yml` — unit-тесты, lint
+- `.github/workflows/docker-build.yml` — сборка Docker образов (CPU, GPU, ROCm), security сканирование Trivy, публикация в GHCR
 
 ## Зависимости
 
 | Пакет | Назначение |
 |-------|-----------|
-| `github.com/yalue/onnxruntime_go` | Go-биндинги для ONNX Runtime (CPU/CUDA inference) |
-| `golang.org/x/image` | Обработка изображений на чистом Go (resize, decode/encode) |
-| `gonum.org/v1/gonum` | BLAS-ускоренное матричное перемножение для кластеризации embeddings |
+| `github.com/yalue/onnxruntime_go` | Go-биндинги для ONNX Runtime (CPU/CUDA/ROCm inference) |
+| `golang.org/x/image` | Обработка изображений на чистом Go |
+| `gonum.org/v1/gonum` | BLAS-ускоренное матричное перемножение для кластеризации |
+| `github.com/jackc/pgx/v5` | PostgreSQL драйвер (pgx) |
+| `github.com/pgvector/pgvector-go` | pgvector Go клиент |
+| `github.com/google/uuid` | UUID генерация |
+| `github.com/joho/godotenv` | .env парсинг |
+| `go.uber.org/zap` | Структурированное логирование |
 
 ## Лицензия
 
