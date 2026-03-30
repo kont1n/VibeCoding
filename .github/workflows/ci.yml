@@ -25,7 +25,7 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@971e64d7664c8a00915e46912e29f0c4799b44a3 # v7.0.0
+        uses: golangci/golangci-lint-action@v7
         env:
           GOTOOLCHAIN: local
         with:
@@ -76,7 +76,7 @@ jobs:
           DB_SSLMODE: disable
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@e2581357e0179e7523a7e8ed85962a0913618a2b # v4.2.0
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.out
           flags: unittests
