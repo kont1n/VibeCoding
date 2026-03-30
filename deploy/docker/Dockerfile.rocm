@@ -2,7 +2,7 @@
 # Face Grouper - AMD ROCm Docker Image
 # =============================================================================
 # Multi-stage build for AMD GPU support
-# Uses ROCm 6.0 base image for RDNA2/CDNA2+ GPUs
+# Uses ROCm 7.x base image for RDNA2/CDNA2+ GPUs
 # Requires AMD GPU with ROCm support (RX 5000+, RX 6000+, RX 7000+, MI50+)
 # =============================================================================
 
@@ -49,7 +49,7 @@ RUN go build -ldflags="-s -w" -trimpath -o face-grouper ./cmd
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime (ROCm base)
 # -----------------------------------------------------------------------------
-FROM rocm/pytorch:rocm6.0-ubuntu22.04 AS runtime
+FROM rocm/dev-ubuntu-22.04:latest AS runtime
 
 # Set working directory
 WORKDIR /app
@@ -109,7 +109,7 @@ CMD ["--serve"]
 #   - RX 6000 series (Navi 20)
 #   - RX 7000 series (Navi 30)
 #   - MI50, MI100, MI200, MI300 (Datacenter)
-# - ROCm 5.4+ (6.0 recommended)
+# - ROCm 6.0+ (7.x recommended)
 # - Docker with ROCm support
 #
 # Supported GPUs:
@@ -164,7 +164,7 @@ CMD ["--serve"]
 #
 #   # Check Docker ROCm access
 #     docker run --device /dev/kfd --device /dev/dri --group-add video \
-#       rocm/pytorch:rocm6.0-ubuntu22.04 rocminfo
+#       rocm/dev-ubuntu-22.04:latest rocminfo
 #
 # Notes:
 # - ROCm requires kernel module access (/dev/kfd, /dev/dri)
