@@ -36,15 +36,15 @@ type ExtractionService interface {
 
 type extractionService struct {
 	cfg          env.ExtractConfig
-	detectorPool []ml.DetectorRepository
-	recPool      []ml.RecognizerRepository
+	detectorPool []ml.DetectorGateway
+	recPool      []ml.RecognizerGateway
 }
 
 // NewExtractionService создаёт новый экземпляр сервиса экстракции.
 func NewExtractionService(
 	cfg env.ExtractConfig,
-	detectorPool []ml.DetectorRepository,
-	recPool []ml.RecognizerRepository,
+	detectorPool []ml.DetectorGateway,
+	recPool []ml.RecognizerGateway,
 ) ExtractionService {
 	return &extractionService{
 		cfg:          cfg,
@@ -79,13 +79,13 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	}
 
 	// Создаём пул детекторов.
-	detPool := make(chan ml.DetectorRepository, len(s.detectorPool))
+	detPool := make(chan ml.DetectorGateway, len(s.detectorPool))
 	for _, det := range s.detectorPool {
 		detPool <- det
 	}
 
 	// Создаём пул распознавателей.
-	recPool := make(chan ml.RecognizerRepository, len(s.recPool))
+	recPool := make(chan ml.RecognizerGateway, len(s.recPool))
 	for _, rec := range s.recPool {
 		recPool <- rec
 	}
@@ -166,7 +166,7 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 func (s *extractionService) processImage(
 	ctx context.Context,
 	imagePath string,
-	detPool chan ml.DetectorRepository,
+	detPool chan ml.DetectorGateway,
 	recBatcher *recognizerBatcher,
 	recSize int,
 	thumbDir string,
@@ -322,13 +322,13 @@ func shortPathHash(path string) string {
 // recognizerBatcher — batcher для распознавания лиц.
 type recognizeRequest struct {
 	done       chan struct{}
-	embeddings [][]float64
+	embeddings [][]float32
 	remaining  int
 	err        error
 	mu         sync.Mutex
 }
 
-func (r *recognizeRequest) resolve(idx int, embedding []float64, err error) {
+func (r *recognizeRequest) resolve(idx int, embedding []float32, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -352,7 +352,7 @@ type recognizeItem struct {
 
 type recognizerBatcher struct {
 	items        chan recognizeItem
-	recPool      chan ml.RecognizerRepository
+	recPool      chan ml.RecognizerGateway
 	batchSize    int
 	flushTimeout time.Duration
 	closeOnce    sync.Once
@@ -360,7 +360,7 @@ type recognizerBatcher struct {
 	wg           sync.WaitGroup
 }
 
-func newRecognizerBatcher(recPool chan ml.RecognizerRepository, workers, batchSize int, flushTimeout time.Duration) *recognizerBatcher {
+func newRecognizerBatcher(recPool chan ml.RecognizerGateway, workers, batchSize int, flushTimeout time.Duration) *recognizerBatcher {
 	if workers <= 0 {
 		workers = 1
 	}
@@ -383,7 +383,7 @@ func newRecognizerBatcher(recPool chan ml.RecognizerRepository, workers, batchSi
 	return b
 }
 
-func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float64, error) {
+func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float32, error) {
 	if len(imgs) == 0 {
 		return nil, nil
 	}
@@ -392,7 +392,7 @@ func (b *recognizerBatcher) Infer(imgs []*imageutil.Image) ([][]float64, error) 
 	}
 	req := &recognizeRequest{
 		done:       make(chan struct{}),
-		embeddings: make([][]float64, len(imgs)),
+		embeddings: make([][]float32, len(imgs)),
 		remaining:  len(imgs),
 	}
 	for i, img := range imgs {

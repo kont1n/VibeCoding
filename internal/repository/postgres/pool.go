@@ -24,6 +24,23 @@ type Config struct {
 	HealthCheckPeriod time.Duration
 }
 
+// Validate validates the database configuration.
+func (c *Config) Validate() error {
+	if c.Password == "" {
+		return fmt.Errorf("database password must not be empty")
+	}
+	if c.Host == "" {
+		return fmt.Errorf("database host must not be empty")
+	}
+	if c.Database == "" {
+		return fmt.Errorf("database name must not be empty")
+	}
+	if c.User == "" {
+		return fmt.Errorf("database user must not be empty")
+	}
+	return nil
+}
+
 // NewPool creates a new PostgreSQL connection pool.
 func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	// Build connection string.
@@ -63,34 +80,4 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
-}
-
-// DefaultConfig returns default PostgreSQL configuration.
-func DefaultConfig() Config {
-	return Config{
-		Host:              "localhost",
-		Port:              5432,
-		Database:          "face-grouper",
-		User:              "face-grouper",
-		Password:          "secret",
-		SSLMode:           "disable",
-		MaxConns:          25,
-		MinConns:          5,
-		MaxConnLifetime:   time.Hour,
-		MaxConnIdleTime:   30 * time.Minute,
-		HealthCheckPeriod: time.Minute,
-	}
-}
-
-// ConfigFromEnv reads configuration from environment variables.
-func ConfigFromEnv() Config {
-	cfg := DefaultConfig()
-
-	// Override with environment variables if needed
-	// This can be extended to read from actual env vars
-	// cfg.Host = getEnv("DB_HOST", cfg.Host)
-	// cfg.Port = getInt("DB_PORT", cfg.Port)
-	// etc.
-
-	return cfg
 }

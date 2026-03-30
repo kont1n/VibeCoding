@@ -84,18 +84,20 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 	}
 
 	// L2-normalize embeddings (defensive, even if recognizer already normalized).
+	// Embeddings are now float32, but Gonum uses float64 internally.
 	embData := make([]float64, n*dim)
 	for i, f := range faces {
-		norm := 0.0
+		norm := float64(0)
 		for _, v := range f.Embedding {
-			norm += v * v
+			vf := float64(v)
+			norm += vf * vf
 		}
 		norm = math.Sqrt(norm)
 		if norm == 0 {
 			norm = 1
 		}
 		for j, v := range f.Embedding {
-			embData[i*dim+j] = v / norm
+			embData[i*dim+j] = float64(v) / norm
 		}
 	}
 

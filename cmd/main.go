@@ -21,9 +21,8 @@ import (
 const configPath = ".env"
 
 const (
-	shutdownTimeout    = 30 * time.Second
-	loggerSyncTimeout  = 5 * time.Second
-	gracefulLogTimeout = 10 * time.Second
+	shutdownTimeout   = 30 * time.Second
+	loggerSyncTimeout = 5 * time.Second
 )
 
 func main() {
@@ -51,7 +50,6 @@ func main() {
 
 	// Контекст с сигналом завершения.
 	appCtx, appCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer appCancel()
 
 	// Настройка closer.
 	closer.Configure(syscall.SIGINT, syscall.SIGTERM)
@@ -60,6 +58,7 @@ func main() {
 	a, err := app.New(appCtx)
 	if err != nil {
 		logger.Error(appCtx, "failed to create app", zap.Error(err))
+		appCancel()
 		return
 	}
 
@@ -67,16 +66,18 @@ func main() {
 	err = a.Run(appCtx, *viewOnly)
 	if err != nil {
 		logger.Error(appCtx, "app error", zap.Error(err))
+		appCancel()
 		return
 	}
 
 	// Graceful shutdown.
-	gracefulShutdown()
+	gracefulShutdown(appCancel)
 }
 
 // gracefulShutdown выполняет корректное завершение работы приложения.
-func gracefulShutdown() {
+func gracefulShutdown(appCancel context.CancelFunc) {
 	logger.Info(context.Background(), "starting graceful shutdown")
+	defer appCancel()
 
 	// Создаём контекст с таймаутом для shutdown.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)

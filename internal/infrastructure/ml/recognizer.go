@@ -3,6 +3,7 @@ package ml
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	ort "github.com/yalue/onnxruntime_go"
 
@@ -17,6 +18,7 @@ type Recognizer struct {
 	inputSize   int
 	inputMean   float32
 	inputStd    float32
+	blobPool    sync.Pool
 }
 
 // RecognizerConfig configures the ArcFace recognizer.
@@ -67,12 +69,17 @@ func NewRecognizer(cfg RecognizerConfig) (*Recognizer, error) {
 		inputSize:   inputSize,
 		inputMean:   127.5,
 		inputStd:    127.5,
+		blobPool: sync.Pool{
+			New: func() interface{} {
+				return make([]float32, 64*3*inputSize*inputSize) // max batch 64
+			},
+		},
 	}, nil
 }
 
 // GetEmbeddings extracts L2-normalized 512-d embeddings from aligned face images.
 // Each face must be an aligned BGR image of size inputSize x inputSize.
-func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error) {
+func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float32, error) {
 	if len(faces) == 0 {
 		return nil, nil
 	}
@@ -81,8 +88,21 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 	h := r.inputSize
 	w := r.inputSize
 
-	// Build blob manually from images.
-	blob := make([]float32, batchSize*3*h*w)
+	// Get blob from pool to reduce allocations.
+	blobInterface := r.blobPool.Get()
+	blob, ok := blobInterface.([]float32)
+	if !ok {
+		blob = make([]float32, batchSize*3*h*w)
+	}
+	// Resize if needed (pool may return smaller slice).
+	requiredSize := batchSize * 3 * h * w
+	if cap(blob) < requiredSize {
+		blob = make([]float32, requiredSize)
+	}
+	blob = blob[:requiredSize]
+
+	defer r.blobPool.Put(blob)
+
 	invStd := 1.0 / float64(r.inputStd)
 	mean := float64(r.inputMean)
 
@@ -146,17 +166,17 @@ func (r *Recognizer) GetEmbeddings(faces []*imageutil.Image) ([][]float64, error
 	outShape := outTensor.GetShape()
 
 	embDim := int(outShape[1])
-	embeddings := make([][]float64, batchSize)
+	embeddings := make([][]float32, batchSize)
 
 	for b := 0; b < int(batchSize); b++ {
-		emb := make([]float64, embDim)
-		var norm float64
+		emb := make([]float32, embDim)
+		var norm float32
 		for j := 0; j < embDim; j++ {
-			v := float64(outData[b*embDim+j])
+			v := outData[b*embDim+j]
 			emb[j] = v
 			norm += v * v
 		}
-		norm = math.Sqrt(norm)
+		norm = float32(math.Sqrt(float64(norm)))
 		if norm < 1e-10 {
 			norm = 1e-10
 		}

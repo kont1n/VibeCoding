@@ -6,68 +6,68 @@ import (
 	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
-// DetectorRepository определяет интерфейс для детекции лиц.
-type DetectorRepository interface {
+// DetectorGateway определяет интерфейс для детекции лиц.
+type DetectorGateway interface {
 	Detect(img *imageutil.Image) ([]Detection, error)
 	Close()
 }
 
-type detectorRepository struct {
+type detectorGateway struct {
 	detector *Detector
 }
 
-// NewDetectorRepository создаёт новый экземпляр репозитория детектора.
-func NewDetectorRepository(cfg DetectorConfig) (DetectorRepository, error) {
+// NewDetectorGateway создаёт новый экземпляр детектора.
+func NewDetectorGateway(cfg DetectorConfig) (DetectorGateway, error) {
 	det, err := NewDetector(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create detector: %w", err)
 	}
 
-	return &detectorRepository{detector: det}, nil
+	return &detectorGateway{detector: det}, nil
 }
 
 // Detect выполняет детекцию лиц на изображении.
-func (r *detectorRepository) Detect(img *imageutil.Image) ([]Detection, error) {
-	return r.detector.Detect(img)
+func (g *detectorGateway) Detect(img *imageutil.Image) ([]Detection, error) {
+	return g.detector.Detect(img)
 }
 
 // Close закрывает ресурсы детектора.
-func (r *detectorRepository) Close() {
-	r.detector.Close()
+func (g *detectorGateway) Close() {
+	g.detector.Close()
 }
 
-// RecognizerRepository определяет интерфейс для распознавания лиц.
-type RecognizerRepository interface {
-	GetEmbeddings(imgs []*imageutil.Image) ([][]float64, error)
+// RecognizerGateway определяет интерфейс для распознавания лиц.
+type RecognizerGateway interface {
+	GetEmbeddings(imgs []*imageutil.Image) ([][]float32, error)
 	InputSize() int
 	Close()
 }
 
-type recognizerRepository struct {
+type recognizerGateway struct {
 	recognizer *Recognizer
 }
 
-// NewRecognizerRepository создаёт новый экземпляр репозитория распознавания.
-func NewRecognizerRepository(cfg RecognizerConfig) (RecognizerRepository, error) {
+// NewRecognizerGateway создаёт новый экземпляр распознавателя.
+func NewRecognizerGateway(cfg RecognizerConfig) (RecognizerGateway, error) {
 	rec, err := NewRecognizer(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create recognizer: %w", err)
 	}
 
-	return &recognizerRepository{recognizer: rec}, nil
+	return &recognizerGateway{recognizer: rec}, nil
 }
 
 // GetEmbeddings извлекает эмбеддинги из изображений лиц.
-func (r *recognizerRepository) GetEmbeddings(imgs []*imageutil.Image) ([][]float64, error) {
-	return r.recognizer.GetEmbeddings(imgs)
+func (g *recognizerGateway) GetEmbeddings(imgs []*imageutil.Image) ([][]float32, error) {
+	return g.recognizer.GetEmbeddings(imgs)
 }
 
 // InputSize возвращает размер входного изображения для модели.
-func (r *recognizerRepository) InputSize() int {
-	return r.recognizer.InputSize()
+func (g *recognizerGateway) InputSize() int {
+	return g.recognizer.InputSize()
 }
 
 // Close закрывает ресурсы распознавателя.
-func (r *recognizerRepository) Close() {
-	r.recognizer.Close()
+func (g *recognizerGateway) Close() {
+	g.recognizer.Close()
 }

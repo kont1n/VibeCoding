@@ -23,6 +23,9 @@ func NewScannerRepository() ScannerRepository {
 			".jpeg": true,
 			".jpg":  true,
 			".png":  true,
+			".webp": true,
+			".gif":  true,
+			".bmp":  true,
 		},
 	}
 }

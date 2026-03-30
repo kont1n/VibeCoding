@@ -13,10 +13,10 @@ func TestClusterGroupsSimilarFaces(t *testing.T) {
 	t.Parallel()
 
 	faces := []model.Face{
-		{Embedding: []float64{1.0, 0.0, 0.0}},
-		{Embedding: []float64{0.99, 0.01, 0.0}},
-		{Embedding: []float64{-1.0, 0.0, 0.0}},
-		{Embedding: []float64{-0.98, -0.02, 0.0}},
+		{Embedding: []float32{1.0, 0.0, 0.0}},
+		{Embedding: []float32{0.99, 0.01, 0.0}},
+		{Embedding: []float32{-1.0, 0.0, 0.0}},
+		{Embedding: []float32{-0.98, -0.02, 0.0}},
 	}
 
 	clusters := Cluster(faces, 0.95)
@@ -39,9 +39,9 @@ func TestClusterAppliesTransitiveMerging(t *testing.T) {
 
 	// A~B and B~C above threshold, A~C below threshold.
 	faces := []model.Face{
-		{Embedding: []float64{1.0, 0.0}},
-		{Embedding: []float64{0.8, 0.6}},
-		{Embedding: []float64{0.28, 0.96}},
+		{Embedding: []float32{1.0, 0.0}},
+		{Embedding: []float32{0.8, 0.6}},
+		{Embedding: []float32{0.28, 0.96}},
 	}
 
 	clusters := Cluster(faces, 0.75)
@@ -82,14 +82,14 @@ func makeRandomFaces(n, dim int) []model.Face {
 	r := rand.New(rand.NewSource(42))
 	faces := make([]model.Face, n)
 	for i := 0; i < n; i++ {
-		emb := make([]float64, dim)
-		var norm float64
+		emb := make([]float32, dim)
+		var norm float32
 		for j := 0; j < dim; j++ {
-			v := r.Float64()*2 - 1
+			v := float32(r.Float64()*2 - 1)
 			emb[j] = v
 			norm += v * v
 		}
-		norm = math.Sqrt(norm)
+		norm = float32(math.Sqrt(float64(norm)))
 		if norm == 0 {
 			norm = 1
 		}

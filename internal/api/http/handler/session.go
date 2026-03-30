@@ -46,6 +46,7 @@ type SessionHandler struct {
 	sessions    sync.Map // sessionID -> sessionState.
 	allowedBase string   // Base directory for input path validation.
 	cancelFuncs sync.Map // sessionID -> context.CancelFunc.
+	stopCh      chan struct{}
 }
 
 type sessionState struct {
@@ -62,9 +63,46 @@ type sessionState struct {
 // NewSessionHandler creates a new SessionHandler.
 // allowedBase restricts input_dir to paths under this directory (path traversal protection).
 func NewSessionHandler(runner PipelineRunner, allowedBase string) *SessionHandler {
-	return &SessionHandler{
+	h := &SessionHandler{
 		runner:      runner,
 		allowedBase: filepath.Clean(allowedBase),
+		stopCh:      make(chan struct{}),
+	}
+	// Start background cleanup for completed sessions (TTL 1 hour).
+	go h.cleanupCompletedSessions(1 * time.Hour)
+	return h
+}
+
+// cleanupCompletedSessions periodically removes completed/failed sessions older than TTL.
+func (h *SessionHandler) cleanupCompletedSessions(ttl time.Duration) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.stopCh:
+			return
+		case <-ticker.C:
+			now := time.Now()
+			h.sessions.Range(func(key, value any) bool {
+				state, ok := value.(*sessionState)
+				if !ok {
+					return true
+				}
+
+				state.mu.RLock()
+				status := state.Status
+				startedAt := state.StartedAt
+				state.mu.RUnlock()
+
+				// Remove completed/failed sessions older than TTL.
+				if (status == statusCompleted || status == statusFailed) && now.Sub(startedAt) > ttl {
+					h.sessions.Delete(key)
+					h.cancelFuncs.Delete(key)
+				}
+				return true
+			})
+		}
 	}
 }
 
@@ -117,7 +155,9 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	h.sessions.Store(sessionID, state)
 
 	// Create cancellable context for the pipeline.
-	pipelineCtx, cancel := context.WithCancel(r.Context())
+	// Use context.Background() instead of r.Context() to prevent pipeline
+	// cancellation when HTTP client disconnects (e.g. browser closed).
+	pipelineCtx, cancel := context.WithCancel(context.Background())
 	h.cancelFuncs.Store(sessionID, cancel)
 
 	// Start pipeline asynchronously.
@@ -303,4 +343,9 @@ func (h *SessionHandler) CancelProcessing(w http.ResponseWriter, r *http.Request
 		"session_id": sessionID,
 		"status":     "canceled",
 	})
+}
+
+// Close stops background goroutines and cleans up resources.
+func (h *SessionHandler) Close() {
+	close(h.stopCh)
 }

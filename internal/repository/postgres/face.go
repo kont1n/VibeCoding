@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 
@@ -30,12 +31,7 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 
-	// Convert []float64 to []float32 for pgvector.
-	embedding32 := make([]float32, len(face.Embedding))
-	for i, v := range face.Embedding {
-		embedding32[i] = float32(v)
-	}
-	embedding := pgvector.NewVector(embedding32)
+	embedding := pgvector.NewVector(face.Embedding)
 
 	_, err := r.pool.Exec(ctx, query,
 		face.ID,
@@ -59,28 +55,19 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 	return nil
 }
 
-// CreateBatch creates multiple faces in a single transaction.
+// CreateBatch creates multiple faces using pgx.Batch for efficient bulk insert.
 func (r *FaceRepository) CreateBatch(ctx context.Context, faces []*model.Face) error {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+	if len(faces) == 0 {
+		return nil
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
 
-	query := `
-		INSERT INTO faces (id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
-		                   det_score, quality_score, thumbnail_path, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-	`
-
+	batch := &pgx.Batch{}
 	for _, face := range faces {
-		// Convert []float64 to []float32 for pgvector.
-		embedding32 := make([]float32, len(face.Embedding))
-		for i, v := range face.Embedding {
-			embedding32[i] = float32(v)
-		}
-		embedding := pgvector.NewVector(embedding32)
-		_, err := tx.Exec(ctx, query,
+		embedding := pgvector.NewVector(face.Embedding)
+		batch.Queue(
+			`INSERT INTO faces (id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+			                    det_score, quality_score, thumbnail_path, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 			face.ID,
 			face.PersonID,
 			face.PhotoID,
@@ -94,13 +81,17 @@ func (r *FaceRepository) CreateBatch(ctx context.Context, faces []*model.Face) e
 			face.ThumbnailPath,
 			face.CreatedAt,
 		)
-		if err != nil {
-			return fmt.Errorf("create face: %w", err)
-		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
+	results := r.pool.SendBatch(ctx, batch)
+	defer results.Close()
+
+	// Check all results.
+	for i := 0; i < batch.Len(); i++ {
+		_, err := results.Exec()
+		if err != nil {
+			return fmt.Errorf("create face %d/%d: %w", i+1, batch.Len(), err)
+		}
 	}
 
 	return nil
@@ -136,12 +127,7 @@ func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face
 		return nil, fmt.Errorf("get face by id: %w", err)
 	}
 
-	// Convert []float32 to []float64.
-	emb32 := embedding.Slice()
-	face.Embedding = make([]float64, len(emb32))
-	for i, v := range emb32 {
-		face.Embedding[i] = float64(v)
-	}
+	face.Embedding = embedding.Slice()
 	return face, nil
 }
 
@@ -166,12 +152,7 @@ func scanFace(rows interface{ Scan(...any) error }) (*model.Face, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan face: %w", err)
 	}
-	// Convert []float32 to []float64.
-	emb32 := embedding.Slice()
-	face.Embedding = make([]float64, len(emb32))
-	for i, v := range emb32 {
-		face.Embedding[i] = float64(v)
-	}
+	face.Embedding = embedding.Slice()
 	return face, nil
 }
 
@@ -238,7 +219,7 @@ func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([
 }
 
 // FindSimilar finds similar faces using vector similarity.
-func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float64, limit int) ([]*model.Face, error) {
+func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		       det_score, quality_score, thumbnail_path, created_at
@@ -247,12 +228,7 @@ func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float64, l
 		LIMIT $2
 	`
 
-	// Convert []float64 to []float32 for pgvector.
-	embedding32 := make([]float32, len(embedding))
-	for i, v := range embedding {
-		embedding32[i] = float32(v)
-	}
-	vec := pgvector.NewVector(embedding32)
+	vec := pgvector.NewVector(embedding)
 	rows, err := r.pool.Query(ctx, query, vec, limit)
 	if err != nil {
 		return nil, fmt.Errorf("find similar faces: %w", err)
@@ -261,30 +237,9 @@ func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float64, l
 
 	var faces []*model.Face
 	for rows.Next() {
-		face := &model.Face{}
-		var emb pgvector.Vector
-		err := rows.Scan(
-			&face.ID,
-			&face.PersonID,
-			&face.PhotoID,
-			&emb,
-			&face.BBox.X1,
-			&face.BBox.Y1,
-			&face.BBox.X2,
-			&face.BBox.Y2,
-			&face.DetScore,
-			&face.QualityScore,
-			&face.ThumbnailPath,
-			&face.CreatedAt,
-		)
+		face, err := scanFace(rows)
 		if err != nil {
-			return nil, fmt.Errorf("scan face: %w", err)
-		}
-		// Convert []float32 to []float64.
-		emb32 := emb.Slice()
-		face.Embedding = make([]float64, len(emb32))
-		for i, v := range emb32 {
-			face.Embedding[i] = float64(v)
+			return nil, err
 		}
 		faces = append(faces, face)
 	}
@@ -306,12 +261,7 @@ func (r *FaceRepository) Update(ctx context.Context, face *model.Face) error {
 		WHERE id = $1
 	`
 
-	// Convert []float64 to []float32 for pgvector.
-	embedding32 := make([]float32, len(face.Embedding))
-	for i, v := range face.Embedding {
-		embedding32[i] = float32(v)
-	}
-	embedding := pgvector.NewVector(embedding32)
+	embedding := pgvector.NewVector(face.Embedding)
 
 	_, err := r.pool.Exec(ctx, query,
 		face.ID,

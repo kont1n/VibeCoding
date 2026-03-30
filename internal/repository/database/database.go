@@ -10,7 +10,6 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/config/env"
 	"github.com/kont1n/face-grouper/internal/infrastructure/database"
-	dbpostgres "github.com/kont1n/face-grouper/internal/infrastructure/database/postgres"
 	repopostgres "github.com/kont1n/face-grouper/internal/repository/postgres"
 )
 
@@ -29,9 +28,9 @@ type DB struct {
 // New creates a new database connection and initializes repositories.
 func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 	// Create connection pool.
-	pool, err := dbpostgres.NewPool(ctx, dbpostgres.Config{
+	pool, err := repopostgres.NewPool(ctx, repopostgres.Config{
 		Host:              cfg.Host,
-		Port:              fmt.Sprintf("%d", cfg.Port),
+		Port:              cfg.Port,
 		Database:          cfg.Database,
 		User:              cfg.User,
 		Password:          cfg.Password,
@@ -76,6 +75,6 @@ func (d *DB) Close() {
 }
 
 // Health returns database health status.
-func (d *DB) Health(ctx context.Context) (*dbpostgres.HealthStatus, error) {
-	return dbpostgres.CheckHealth(ctx, d.Pool)
+func (d *DB) Health(ctx context.Context) (*repopostgres.HealthStatus, error) {
+	return repopostgres.CheckHealth(ctx, d.Pool)
 }

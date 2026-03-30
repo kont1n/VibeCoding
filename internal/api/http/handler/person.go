@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
 	"strconv"
 
@@ -144,11 +145,13 @@ func (h *PersonHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize name (prevent XSS).
+	// Sanitize name (prevent XSS) — escape HTML entities.
 	if len(req.Name) > 200 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name too long (max 200 chars)"})
 		return
 	}
+	// Escape HTML to prevent XSS attacks.
+	sanitizedName := html.EscapeString(req.Name)
 
 	person, err := h.db.Persons.GetByID(r.Context(), id)
 	if err != nil {
@@ -160,7 +163,7 @@ func (h *PersonHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	person.CustomName = req.Name
+	person.CustomName = sanitizedName
 	if err := h.db.Persons.Update(r.Context(), person); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

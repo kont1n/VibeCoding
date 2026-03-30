@@ -160,7 +160,7 @@ func NewDatabaseConfig() DatabaseConfig {
 		Database:          getEnv("DB_NAME", ""),
 		User:              getEnv("DB_USER", ""),
 		Password:          getEnv("DB_PASSWORD", ""),
-		SSLMode:           getEnv("DB_SSLMODE", "disable"),
+		SSLMode:           getEnv("DB_SSLMODE", "require"),
 		MaxConns:          getInt("DB_MAX_CONNS", 25),
 		MinConns:          getInt("DB_MIN_CONNS", 5),
 		MaxConnLifetime:   getInt("DB_MAX_CONN_LIFETIME", 3600),

@@ -3,18 +3,23 @@ package web
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/api/http/middleware"
 	"github.com/kont1n/face-grouper/internal/repository/database"
 )
+
+//go:embed index.html
+var indexHTML []byte
 
 // ServerConfig holds configuration for the HTTP server.
 type ServerConfig struct {
@@ -84,9 +89,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /", s.serveIndex)
 	s.mux.HandleFunc("GET /api/report", s.serveReport)
 
-	// File serving.
-	fs := http.FileServer(http.Dir(s.cfg.OutputDir))
-	s.mux.Handle("GET /output/", http.StripPrefix("/output/", fs))
+	// File serving: only allow image files to prevent directory listing exposure.
+	s.mux.HandleFunc("GET /output/", s.serveOutputFile)
 
 	// Health.
 	s.mux.HandleFunc("GET /health", s.healthHandler.HealthCheck)
@@ -108,6 +112,69 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("PUT /api/v1/persons/{id}", s.personHandler.Rename)
 	s.mux.HandleFunc("GET /api/v1/persons/{id}/photos", s.personHandler.Photos)
 	s.mux.HandleFunc("GET /api/v1/persons/{id}/relations", s.personHandler.Relations)
+}
+
+// allowedExtensions defines which file extensions can be served from output directory.
+var allowedExtensions = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".gif":  true,
+	".webp": true,
+	".bmp":  true,
+	".svg":  true,
+}
+
+// serveOutputFile serves files from output directory but only allows image files.
+// This prevents directory listing and exposure of sensitive files like logs.
+func (s *Server) serveOutputFile(w http.ResponseWriter, r *http.Request) {
+	// Clean the path to prevent directory traversal.
+	requestPath := strings.TrimPrefix(r.URL.Path, "/output/")
+	requestPath = filepath.Clean(requestPath)
+
+	// Build full path.
+	fullPath := filepath.Join(s.cfg.OutputDir, requestPath)
+
+	// Check file extension.
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	if !allowedExtensions[ext] {
+		http.Error(w, "file type not allowed", http.StatusForbidden)
+		return
+	}
+
+	// Verify the file is within output directory (prevent traversal via symlinks).
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	absOutput, err := filepath.Abs(s.cfg.OutputDir)
+	if err != nil {
+		http.Error(w, "invalid output dir", http.StatusBadRequest)
+		return
+	}
+	if !strings.HasPrefix(absPath, absOutput) {
+		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
+	// Check if file exists and is a regular file.
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "error accessing file", http.StatusInternalServerError)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "directory listing not allowed", http.StatusForbidden)
+		return
+	}
+
+	// Serve the file.
+	http.ServeFile(w, r, fullPath)
 }
 
 func (s *Server) applyMiddleware() {

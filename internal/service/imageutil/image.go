@@ -53,13 +53,42 @@ func DecodeImage(r io.Reader) (*Image, error) {
 
 	result := NewImage(width, height)
 
-	// Convert to BGR.
+	// Fast path for common formats.
+	switch src := img.(type) {
+	case *image.NRGBA:
+		// NRGBA is already in 8-bit format.
+		for y := 0; y < height; y++ {
+			row := src.Pix[y*src.Stride : y*src.Stride+width*4]
+			for x := 0; x < width; x++ {
+				idx := (y*width + x) * 3
+				srcIdx := x * 4
+				// Convert RGBA to BGR.
+				result.Data[idx] = row[srcIdx+2]     // B
+				result.Data[idx+1] = row[srcIdx+1]   // G
+				result.Data[idx+2] = row[srcIdx]     // R
+			}
+		}
+		return result, nil
+
+	case *image.RGBA:
+		for y := 0; y < height; y++ {
+			row := src.Pix[y*src.Stride : y*src.Stride+width*4]
+			for x := 0; x < width; x++ {
+				idx := (y*width + x) * 3
+				srcIdx := x * 4
+				result.Data[idx] = row[srcIdx+2]     // B
+				result.Data[idx+1] = row[srcIdx+1]   // G
+				result.Data[idx+2] = row[srcIdx]     // R
+			}
+		}
+		return result, nil
+	}
+
+	// Fallback for other formats (slower but compatible).
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			c := img.At(x, y)
 			r, g, b, _ := c.RGBA()
-			// RGBA() returns 16-bit values, convert to 8-bit
-			// and store as BGR.
 			idx := (y*width + x) * 3
 			result.Data[idx] = uint8(b >> 8)
 			result.Data[idx+1] = uint8(g >> 8)
@@ -72,17 +101,24 @@ func DecodeImage(r io.Reader) (*Image, error) {
 
 // SaveImage saves an image to file as JPEG.
 func SaveImage(img *Image, path string, quality int) error {
-	// Convert BGR to RGB for encoding.
+	// Convert BGR to RGB for encoding using direct buffer access.
 	rgba := image.NewRGBA(image.Rect(0, 0, img.Width, img.Height))
+	
+	// Direct buffer manipulation for speed.
+	dstPix := rgba.Pix
+	srcData := img.Data
+	
 	for y := 0; y < img.Height; y++ {
+		srcRow := y * img.Width * 3
+		dstRow := y * rgba.Stride
 		for x := 0; x < img.Width; x++ {
-			idx := (y*img.Width + x) * 3
-			rgba.Set(x, y, color.RGBA{
-				R: img.Data[idx+2],
-				G: img.Data[idx+1],
-				B: img.Data[idx],
-				A: 255,
-			})
+			srcIdx := srcRow + x*3
+			dstIdx := dstRow + x*4
+			// Convert BGR to RGBA.
+			dstPix[dstIdx] = srcData[srcIdx+2]     // R
+			dstPix[dstIdx+1] = srcData[srcIdx+1]   // G
+			dstPix[dstIdx+2] = srcData[srcIdx]     // B
+			dstPix[dstIdx+3] = 255                 // A
 		}
 	}
 

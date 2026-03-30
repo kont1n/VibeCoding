@@ -35,8 +35,8 @@ type DiContainer struct {
 	organizeService   *organizer.Organizer
 
 	scannerRepo    filesystem.ScannerRepository
-	detectorPool   []ml.DetectorRepository
-	recognizerPool []ml.RecognizerRepository
+	detectorPool   []ml.DetectorGateway
+	recognizerPool []ml.RecognizerGateway
 }
 
 // SetDatabase устанавливает соединение с базой данных.
@@ -139,13 +139,13 @@ func (d *DiContainer) scannerRepositoryLocked() filesystem.ScannerRepository {
 }
 
 // DetectorPool возвращает пул детекторов.
-func (d *DiContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository {
+func (d *DiContainer) DetectorPool(ctx context.Context) []ml.DetectorGateway {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.detectorPoolLocked(ctx)
 }
 
-func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorRepository {
+func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorGateway {
 	if d.detectorPool == nil {
 		cfg := d.cfg.Extract
 		modelsDir := d.cfg.Models.Dir
@@ -176,10 +176,10 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorRepos
 			sessions = 1
 		}
 
-		pool := make([]ml.DetectorRepository, sessions)
+		pool := make([]ml.DetectorGateway, sessions)
 		for i := 0; i < sessions; i++ {
 			modelPath := filepath.Join(modelsDir, "det_10g.onnx")
-			det, err := ml.NewDetectorRepository(ml.DetectorConfig{
+			det, err := ml.NewDetectorGateway(ml.DetectorConfig{
 				ModelPath: modelPath,
 				Provider:  providerCfg,
 				DetThresh: float32(cfg.DetThresh),
@@ -215,13 +215,13 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorRepos
 }
 
 // RecognizerPool возвращает пул распознавателей.
-func (d *DiContainer) RecognizerPool(ctx context.Context) []ml.RecognizerRepository {
+func (d *DiContainer) RecognizerPool(ctx context.Context) []ml.RecognizerGateway {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.recognizerPoolLocked(ctx)
 }
 
-func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerRepository {
+func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerGateway {
 	if d.recognizerPool == nil {
 		cfg := d.cfg.Extract
 		modelsDir := d.cfg.Models.Dir
@@ -252,10 +252,10 @@ func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerR
 			sessions = 1
 		}
 
-		pool := make([]ml.RecognizerRepository, sessions)
+		pool := make([]ml.RecognizerGateway, sessions)
 		for i := 0; i < sessions; i++ {
 			modelPath := filepath.Join(modelsDir, "w600k_r50.onnx")
-			rec, err := ml.NewRecognizerRepository(ml.RecognizerConfig{
+			rec, err := ml.NewRecognizerGateway(ml.RecognizerConfig{
 				ModelPath: modelPath,
 				Provider:  providerCfg,
 			})

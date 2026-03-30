@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -24,8 +25,13 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 }
 
 // RateLimiter middleware implements rate limiting.
+type limiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 type RateLimiter struct {
-	limiters map[string]*rate.Limiter
+	limiters map[string]*limiterEntry
 	mu       sync.RWMutex
 	rps      rate.Limit
 	burst    int
@@ -34,7 +40,7 @@ type RateLimiter struct {
 // NewRateLimiter creates a new rate limiter middleware.
 func NewRateLimiter(rps float64, burst int) *RateLimiter {
 	return &RateLimiter{
-		limiters: make(map[string]*rate.Limiter),
+		limiters: make(map[string]*limiterEntry),
 		rps:      rate.Limit(rps),
 		burst:    burst,
 	}
@@ -43,35 +49,35 @@ func NewRateLimiter(rps float64, burst int) *RateLimiter {
 // getLimiter returns or creates a rate limiter for a given key.
 func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 	rl.mu.RLock()
-	limiter, exists := rl.limiters[key]
+	entry, exists := rl.limiters[key]
 	rl.mu.RUnlock()
 
 	if exists {
-		return limiter
+		entry.lastSeen = time.Now()
+		return entry.limiter
 	}
 
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
 	// Double-check after acquiring write lock.
-	if limiter, exists = rl.limiters[key]; exists {
-		return limiter
+	if entry, exists = rl.limiters[key]; exists {
+		entry.lastSeen = time.Now()
+		return entry.limiter
 	}
 
-	limiter = rate.NewLimiter(rl.rps, rl.burst)
-	rl.limiters[key] = limiter
+	limiter := rate.NewLimiter(rl.rps, rl.burst)
+	rl.limiters[key] = &limiterEntry{
+		limiter:  limiter,
+		lastSeen: time.Now(),
+	}
 	return limiter
 }
 
 // Middleware returns the HTTP middleware for rate limiting.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Use IP address as the rate limit key.
-		key := r.RemoteAddr
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			key = forwarded
-		}
-
+		key := getClientIP(r)
 		limiter := rl.getLimiter(key)
 
 		if !limiter.Allow() {
@@ -83,6 +89,18 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// getClientIP returns the client IP address from RemoteAddr.
+// X-Forwarded-For is intentionally ignored to prevent IP spoofing.
+// If you need to trust X-Forwarded-For behind a known reverse proxy,
+// configure trusted proxy addresses and validate the header accordingly.
+func getClientIP(r *http.Request) string {
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
 // Cleanup removes limiters that haven't been used recently.
 func (rl *RateLimiter) Cleanup(interval time.Duration, stopCh <-chan struct{}) {
 	ticker := time.NewTicker(interval)
@@ -92,9 +110,10 @@ func (rl *RateLimiter) Cleanup(interval time.Duration, stopCh <-chan struct{}) {
 		select {
 		case <-ticker.C:
 			rl.mu.Lock()
-			for key, limiter := range rl.limiters {
-				if limiter.AllowN(time.Now(), 0) {
-					// Limiter is full, remove it.
+			now := time.Now()
+			for key, entry := range rl.limiters {
+				// Удаляем только те записи, которые не обращались > 3 минут
+				if now.Sub(entry.lastSeen) > 3*time.Minute {
 					delete(rl.limiters, key)
 				}
 			}

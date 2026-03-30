@@ -241,11 +241,11 @@ func (d *Detector) Close() {
 func (d *Detector) getAnchorCenters(height, width, stride int) [][2]float32 {
 	key := [3]int{height, width, stride}
 	d.centerCacheMu.Lock()
+	defer d.centerCacheMu.Unlock()
+
 	if cached, ok := d.centerCache[key]; ok {
-		d.centerCacheMu.Unlock()
 		return cached
 	}
-	d.centerCacheMu.Unlock()
 
 	centers := make([][2]float32, 0, height*width*d.numAnchors)
 	for y := 0; y < height; y++ {
@@ -259,9 +259,7 @@ func (d *Detector) getAnchorCenters(height, width, stride int) [][2]float32 {
 		}
 	}
 
-	d.centerCacheMu.Lock()
 	d.centerCache[key] = centers
-	d.centerCacheMu.Unlock()
 	return centers
 }
 

@@ -38,10 +38,15 @@ func fieldsToZapFields(fields []any) []zap.Field {
 var (
 	mu           sync.Mutex
 	closers      []CloseFunc
-	namedClosers = make(map[string]CloseFunc)
+	namedClosers []namedCloseFunc
 	logger       Logger
 	configured   bool
 )
+
+type namedCloseFunc struct {
+	name string
+	fn   CloseFunc
+}
 
 // Configure инициализирует closer с сигналами завершения (вызывается один раз в main).
 func Configure(signals ...any) {
@@ -68,7 +73,7 @@ func Add(fn CloseFunc) {
 func AddNamed(name string, fn CloseFunc) {
 	mu.Lock()
 	defer mu.Unlock()
-	namedClosers[name] = fn
+	namedClosers = append(namedClosers, namedCloseFunc{name: name, fn: fn})
 }
 
 // CloseAll закрывает все зарегистрированные ресурсы в обратном порядке.
@@ -78,11 +83,11 @@ func CloseAll(ctx context.Context) error {
 
 	var lastErr error
 
-	// Закрытие именованных ресурсов.
-	for name, fn := range namedClosers {
-		if err := fn(ctx); err != nil {
+	// Закрытие именованных ресурсов (в порядке добавления).
+	for _, nc := range namedClosers {
+		if err := nc.fn(ctx); err != nil {
 			if logger != nil {
-				logger.Error("error closing named resource", "name", name, "error", err)
+				logger.Error("error closing named resource", "name", nc.name, "error", err)
 			}
 			lastErr = err
 		}
