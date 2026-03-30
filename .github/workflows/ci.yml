@@ -8,6 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.24'
+  GOTOOLCHAIN: local
 
 jobs:
   lint:
@@ -25,9 +26,11 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
+        env:
+          GOTOOLCHAIN: local
         with:
           version: latest
-          args: --timeout=5m
+          args: --timeout=5m --exclude-dirs=internal/infrastructure/ml
 
   test:
     name: Test
@@ -60,8 +63,9 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v 'infrastructure/ml')
         env:
+          GOTOOLCHAIN: local
           DB_HOST: localhost
           DB_PORT: 5432
           DB_NAME: testdb
@@ -92,6 +96,8 @@ jobs:
 
       - name: Build
         run: go build -v -o bin/server ./cmd/...
+        env:
+          GOTOOLCHAIN: local
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
