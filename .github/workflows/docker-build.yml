@@ -216,7 +216,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            ONNXRUNTIME_VERSION=1.23.0
+            ONNXRUNTIME_VERSION=1.18.0
 
       - name: Run Trivy vulnerability scanner (ROCm)
         uses: aquasecurity/trivy-action@master
