@@ -181,7 +181,7 @@ test-docker-cpu:
 
 test-docker-gpu:
 	@echo "$(BLUE)Testing GPU image...$(NC)"
-	@if docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi > /dev/null 2>&1; then \
+	@if docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi > /dev/null 2>&1; then \
 		mkdir -p test-dataset test-output test-models && \
 		docker run --rm --gpus all \
 			-v $(PWD)/test-dataset:/app/dataset:ro \

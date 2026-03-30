@@ -234,7 +234,7 @@ func WarpAffine(img *Image, m [2][3]float64, width, height int) *Image {
 	}
 
 	// Inverse of 2x2 matrix: [a b; c d]^-1 = 1/det * [d -b; -c a].
-	// For affine transform with translation:
+	// For affine transform with translation.
 	invDet := 1.0 / det
 	invA := d * invDet
 	invB := -b * invDet

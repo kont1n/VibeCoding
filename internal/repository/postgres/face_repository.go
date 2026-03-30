@@ -225,15 +225,6 @@ func (r *FaceRepository) Count(ctx context.Context) (int, error) {
 	return count, err
 }
 
-// Helper.
-func float32SliceToFloat64Slice(in []float32) []float64 {
-	out := make([]float64, len(in))
-	for i, v := range in {
-		out[i] = float64(v)
-	}
-	return out
-}
-
 func uuidFromSQL(id any) uuid.UUID {
 	if uid, ok := id.(uuid.UUID); ok {
 		return uid

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"go.uber.org/zap"
@@ -27,7 +28,7 @@ const providerPriorityAuto = "auto"
 
 // App представляет основное приложение.
 type App struct {
-	diContainer *diContainer
+	diContainer *DiContainer
 }
 
 // New создаёт новое приложение.
@@ -161,7 +162,7 @@ func (a *App) runProcess(ctx context.Context) error {
 
 	// Determine library path.
 	var ortLibPath string
-	if cfg.GPU && !cfg.ForceCPU {
+	if runtime.GOOS == "windows" && cfg.GPU && !cfg.ForceCPU {
 		// Try GPU path first.
 		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
@@ -201,7 +202,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	start := time.Now()
 	stageDurations := make(map[string]time.Duration)
 
-	// --- Scan. ---
+	// --- Scan. ---.
 	stageStart := time.Now()
 	_, _ = fmt.Fprintf(w, "=== Scanning directory ===\n")
 	files, err := api.Scan(ctx, appCfg.App.InputDir)
@@ -216,7 +217,7 @@ func (a *App) runProcess(ctx context.Context) error {
 		return nil
 	}
 
-	// --- Thumbnails dir. ---
+	// --- Thumbnails dir. ---.
 	err = os.RemoveAll(thumbDir)
 	if err != nil {
 		return fmt.Errorf("cannot clean thumbnails dir: %w", err)
@@ -226,7 +227,7 @@ func (a *App) runProcess(ctx context.Context) error {
 		return fmt.Errorf("cannot create thumbnails dir: %w", err)
 	}
 
-	// --- Extract. ---
+	// --- Extract. ---.
 	stageStart = time.Now()
 	_, _ = fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
 	_, _ = fmt.Fprintf(w, "Mode: %s, %d worker(s)\n", selectedProvider.Name, appCfg.Extract.Workers)
@@ -246,7 +247,7 @@ func (a *App) runProcess(ctx context.Context) error {
 		return nil
 	}
 
-	// --- Cluster. ---
+	// --- Cluster. ---.
 	stageStart = time.Now()
 	_, _ = fmt.Fprintf(w, "=== Clustering faces ===\n")
 	clusters, err := api.Cluster(ctx, extractResult.Faces, appCfg.Cluster.Threshold)
@@ -256,7 +257,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	_, _ = fmt.Fprintf(w, "Found %d person(s)\n\n", len(clusters))
 	stageDurations["cluster"] = time.Since(stageStart)
 
-	// --- Organize. ---
+	// --- Organize. ---.
 	stageStart = time.Now()
 	_, _ = fmt.Fprintf(w, "=== Organizing output ===\n")
 	persons, err := api.Organize(ctx, clusters, outputDir, appCfg.Organizer.AvatarUpdateThreshold, w)
@@ -265,17 +266,17 @@ func (a *App) runProcess(ctx context.Context) error {
 	}
 	stageDurations["organize_avatar"] = time.Since(stageStart)
 
-	// --- Build report. ---
+	// --- Build report. ---.
 	rpt := a.buildReport(start, appCfg, len(files), extractResult, persons)
 
 	if err := report.Save(rpt, outputDir); err != nil {
 		_, _ = fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
 	}
 
-	// --- Summary. ---
+	// --- Summary. ---.
 	a.printSummary(w, rpt, stageDurations)
 
-	// --- Web UI. ---
+	// --- Web UI. ---.
 	if appCfg.Web.Serve {
 		_, _ = fmt.Fprintf(w, "\n=== Starting web UI ===\n")
 		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)

@@ -123,7 +123,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		_ = dst.Close()
 
 		if err != nil {
-			_ = os.Remove(dstPath)
+			_ = os.Remove(dstPath) //nolint:gosec // G703: dstPath checked against sessionDir above
 			continue
 		}
 

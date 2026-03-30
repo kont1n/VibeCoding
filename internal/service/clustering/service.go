@@ -1,3 +1,4 @@
+// Package clustering provides face clustering application services.
 package clustering
 
 import (

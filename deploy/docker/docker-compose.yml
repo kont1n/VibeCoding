@@ -24,7 +24,7 @@ services:
     
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     
     ports:
       - "5432:5432"
@@ -69,10 +69,10 @@ services:
   # -------------------------------------------------------------------------
   face-grouper-cpu:
     build:
-      context: .
+      context: ../..
       dockerfile: deploy/docker/Dockerfile
       args:
-        ONNXRUNTIME_VERSION: "1.23.0"
+        ONNXRUNTIME_VERSION: "1.24.4"
     image: face-grouper:cpu
     container_name: face-grouper-cpu
     restart: unless-stopped
@@ -151,10 +151,10 @@ services:
   # -------------------------------------------------------------------------
   face-grouper-rocm:
     build:
-      context: .
+      context: ../..
       dockerfile: deploy/docker/Dockerfile.rocm
       args:
-        ONNXRUNTIME_VERSION: "1.23.0"
+        ONNXRUNTIME_VERSION: "1.24.4"
     image: face-grouper:rocm
     container_name: face-grouper-rocm
     restart: unless-stopped
@@ -165,9 +165,9 @@ services:
     
     # Volume mounts
     volumes:
-      - ./dataset:/app/dataset:ro
-      - ./output:/app/output
-      - ./models:/app/models:ro
+      - ../../dataset:/app/dataset:ro
+      - ../../output:/app/output
+      - ../../models:/app/models:ro
     
     # Device access for ROCm
     devices:
@@ -184,13 +184,21 @@ services:
       - INPUT_DIR=/app/dataset
       - OUTPUT_DIR=/app/output
       - MODELS_DIR=/app/models
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=face-grouper
+      - DB_USER=face-grouper
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - GPU_ENABLED=1
       - GPU_DEVICE_ID=0
       - PROVIDER_PRIORITY=rocm
       - HIP_VISIBLE_DEVICES=0
       - ROCR_VISIBLE_DEVICES=0
       - EXTRACT_WORKERS=4
-      - GPUDet_SESSIONS=2
+      - GPU_DET_SESSIONS=2
       - GPU_REC_SESSIONS=2
       - EMBED_BATCH_SIZE=64
       - LOG_LEVEL=info
@@ -206,6 +214,12 @@ services:
             - driver: amdgpu
               count: 1
               capabilities: [gpu]
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     
     # Health check
     healthcheck:
@@ -229,10 +243,10 @@ services:
   # -------------------------------------------------------------------------
   face-grouper-gpu:
     build:
-      context: .
+      context: ../..
       dockerfile: deploy/docker/Dockerfile.nvidia
       args:
-        ONNXRUNTIME_VERSION: "1.23.0"
+        ONNXRUNTIME_VERSION: "1.24.4"
     image: face-grouper:gpu
     container_name: face-grouper-gpu
     restart: unless-stopped
@@ -243,20 +257,28 @@ services:
     
     # Volume mounts
     volumes:
-      - ./dataset:/app/dataset:ro
-      - ./output:/app/output
-      - ./models:/app/models:ro
+      - ../../dataset:/app/dataset:ro
+      - ../../output:/app/output
+      - ../../models:/app/models:ro
     
     # Environment variables
     environment:
       - INPUT_DIR=/app/dataset
       - OUTPUT_DIR=/app/output
       - MODELS_DIR=/app/models
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=face-grouper
+      - DB_USER=face-grouper
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - GPU_ENABLED=1
       - GPU_DEVICE_ID=0
       - PROVIDER_PRIORITY=cuda
       - EXTRACT_WORKERS=4
-      - GPUDet_SESSIONS=2
+      - GPU_DET_SESSIONS=2
       - GPU_REC_SESSIONS=2
       - EMBED_BATCH_SIZE=64
       - LOG_LEVEL=info
@@ -272,6 +294,12 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     
     # Health check
     healthcheck:

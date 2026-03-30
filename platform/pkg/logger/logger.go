@@ -1,3 +1,4 @@
+// Package logger configures the global structured logger (zap).
 package logger
 
 import (
@@ -93,12 +94,27 @@ func Error(ctx context.Context, msg string, fields ...any) {
 
 // fieldsToZapFields преобразует интерфейс keys/values в zap.Field.
 func fieldsToZapFields(fields []any) []zap.Field {
-	zapFields := make([]zap.Field, 0, len(fields)/2)
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			zapFields = append(zapFields, zap.Any(key, fields[i+1]))
+	zapFields := make([]zap.Field, 0, len(fields))
+
+	// Поддерживаем оба формата:
+	// 1) logger.Info(ctx, msg, "key", value)
+	// 2) logger.Info(ctx, msg, zap.String("key", "value"), zap.Error(err), ...)
+	for i := 0; i < len(fields); {
+		switch v := fields[i].(type) {
+		case zap.Field:
+			zapFields = append(zapFields, v)
+			i++
+		case string:
+			if i+1 < len(fields) {
+				zapFields = append(zapFields, zap.Any(v, fields[i+1]))
+			}
+			i += 2
+		default:
+			// Ignore unknown types to keep logger calls safe.
+			i++
 		}
 	}
+
 	return zapFields
 }
 

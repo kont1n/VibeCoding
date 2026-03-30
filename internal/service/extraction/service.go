@@ -1,3 +1,4 @@
+// Package extraction provides face detection and embedding extraction services.
 package extraction
 
 import (
@@ -54,6 +55,16 @@ func NewExtractionService(
 // Extract выполняет обнаружение лиц и извлечение эмбеддингов.
 func (s *extractionService) Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*ExtractionResult, error) {
 	res := &ExtractionResult{FileErrors: make(map[string]string)}
+
+	// Если модели/ONNX Runtime не инициализировались (например, в -view режиме без успешного ORT),
+	// то иначе это приведёт к дедлоку в ожидании пулов.
+	if len(s.detectorPool) == 0 || len(s.recPool) == 0 {
+		return nil, fmt.Errorf(
+			"extraction runtime not initialized: detectors=%d recognizers=%d",
+			len(s.detectorPool),
+			len(s.recPool),
+		)
+	}
 
 	logger.Info(ctx, "starting face extraction",
 		zap.Int("files", len(files)),
@@ -152,7 +163,7 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 }
 
 func (s *extractionService) processImage(
-	ctx context.Context,
+	_ context.Context,
 	imagePath string,
 	detPool chan ml.DetectorRepository,
 	recBatcher *recognizerBatcher,
@@ -291,20 +302,6 @@ func (s *extractionService) saveThumbnail(img *imageutil.Image, det ml.Detection
 	return thumbPath
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func shortPathHash(path string) string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(path))
@@ -416,8 +413,8 @@ func (b *recognizerBatcher) runWorker() {
 	collect:
 		for len(batch) < b.batchSize {
 			select {
-			case item, ok := <-b.items:
-				if !ok {
+			case item, recvOK := <-b.items:
+				if !recvOK {
 					channelClosed = true
 					break collect
 				}

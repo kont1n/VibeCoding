@@ -91,7 +91,7 @@ func extractFile(f *zip.File, destDir string) error {
 	}
 
 	// Set file permissions.
-	if err := os.Chmod(target, 0o640); err != nil {
+	if err := os.Chmod(target, 0o600); err != nil {
 		return fmt.Errorf("set file permissions: %w", err)
 	}
 
@@ -123,7 +123,7 @@ func extractFileContent(f *zip.File, target string) error {
 	}
 	defer func() { _ = rc.Close() }()
 
-	outFile, err := os.Create(target)
+	outFile, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // target from sanitizePath
 	if err != nil {
 		return fmt.Errorf("create file %s: %w", target, err)
 	}

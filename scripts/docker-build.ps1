@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Face Grouper - Docker Build and Test Script (PowerShell)
 # =============================================================================
 # Usage:
@@ -115,7 +115,7 @@ function Test-GPU {
     Write-Info "Testing GPU image..."
     
     # Check NVIDIA Container Toolkit
-    $nvidiaTest = docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi 2>&1
+    $nvidiaTest = docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "NVIDIA Container Toolkit not available, skipping GPU test"
         return

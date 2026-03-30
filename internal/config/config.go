@@ -29,7 +29,9 @@ type Config struct {
 // Load загружает конфигурацию из .env файла и переменных окружения.
 func Load(path string) error {
 	// Overload перезаписывает существующие переменные окружения.
-	err := godotenv.Overload(path)
+	// Мы не должны затирать переменные, переданные через Docker/Compose,
+	// поэтому используем Load (устанавливает только отсутствующие env).
+	err := godotenv.Load(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("load .env file: %w", err)
 	}

@@ -44,14 +44,14 @@ func (r *SessionRepository) Create(ctx context.Context, session *model.Processin
 	_, err = r.pool.Exec(ctx, query,
 		session.ID,
 		session.Status,
-		nullStringToSql(session.Stage),
+		nullStringToSQL(session.Stage),
 		session.Progress,
 		session.TotalItems,
 		session.ProcessedItems,
 		session.Errors,
 		errorDetailsJSON,
 		configJSON,
-		uuidFromSql(session.CreatedBy),
+		uuidFromSQL(session.CreatedBy),
 	)
 
 	return err
@@ -169,7 +169,7 @@ func (r *SessionRepository) Update(ctx context.Context, session *model.Processin
 	_, err = r.pool.Exec(ctx, query,
 		session.ID,
 		session.Status,
-		nullStringToSql(session.Stage),
+		nullStringToSQL(session.Stage),
 		session.Progress,
 		session.ProcessedItems,
 		session.Errors,

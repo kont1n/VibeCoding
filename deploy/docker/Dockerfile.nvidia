@@ -26,9 +26,6 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
 
-# Copy source code
-COPY . .
-
 # Download ONNX Runtime GPU library
 ARG ONNXRUNTIME_VERSION=1.23.0
 RUN curl -L -o /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz \
@@ -36,6 +33,9 @@ RUN curl -L -o /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz \
     && tar -xzf /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
     && mv /opt/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
     && rm /tmp/onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}.tgz
+
+# Copy source code
+COPY . .
 
 # Set environment variables for CGO
 ENV CGO_ENABLED=1
@@ -49,7 +49,7 @@ RUN go build -ldflags="-s -w" -trimpath -o face-grouper ./cmd
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime (NVIDIA CUDA base)
 # -----------------------------------------------------------------------------
-FROM nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 AS runtime
+FROM nvidia/cuda:12.3.2-cudnn9-devel-ubuntu22.04 AS runtime
 
 # Set working directory
 WORKDIR /app

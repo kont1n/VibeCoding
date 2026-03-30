@@ -70,7 +70,7 @@ func (m *Migrator) MigrateTo(ctx context.Context, version uint) error {
 }
 
 // GetVersion returns the current database schema version (not implemented).
-func (m *Migrator) GetVersion(ctx context.Context) (uint, bool, error) {
+func (m *Migrator) GetVersion(ctx context.Context) (ver uint, ok bool, err error) {
 	return 0, false, fmt.Errorf("GetVersion not implemented")
 }
 

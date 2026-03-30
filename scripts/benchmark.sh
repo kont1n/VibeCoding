@@ -106,7 +106,7 @@ benchmark_cpu() {
 
 # Benchmark NVIDIA GPU
 benchmark_gpu() {
-    if docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi > /dev/null 2>&1; then
+    if docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi > /dev/null 2>&1; then
         run_benchmark "gpu-nvidia" "face-grouper:gpu" "8081" "--gpus all -e GPU_ENABLED=1 -e LOG_LEVEL=info"
     else
         log_warn "NVIDIA GPU not available, skipping GPU benchmark"

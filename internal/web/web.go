@@ -31,7 +31,7 @@ func Serve(outputDir string, port int) error {
 
 	mux.HandleFunc("/api/report", func(w http.ResponseWriter, r *http.Request) {
 		reportPath := filepath.Join(outputDir, "report.json")
-		data, err := os.ReadFile(reportPath)
+		data, err := os.ReadFile(reportPath) //nolint:gosec // reportPath under outputDir
 		if err != nil {
 			http.Error(w, "report not found", http.StatusNotFound)
 			return

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // register JPEG decoder for image.DecodeConfig.
+	_ "image/png"  // register PNG decoder for image.DecodeConfig.
 	"io"
 	"os"
 	"path/filepath"
@@ -225,7 +225,7 @@ func copyFile(src, dst string) error {
 	}
 	defer func() { _ = in.Close() }()
 
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // dst is under controlled output tree
 	if err != nil {
 		return err
 	}

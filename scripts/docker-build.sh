@@ -108,7 +108,7 @@ test_gpu() {
     log_info "Testing GPU image..."
     
     # Check NVIDIA Container Toolkit
-    if ! docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi &> /dev/null; then
+    if ! docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi &> /dev/null; then
         log_warn "NVIDIA Container Toolkit not available, skipping GPU test"
         return
     fi

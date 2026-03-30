@@ -36,7 +36,7 @@ func CalculateFaceScoreWithFrontal(crop image.Image, bbox Box, frontalPoseFactor
 		return 0
 	}
 
-	return area * sharpness * clamp(frontalPoseFactor, 0.15, 1.0)
+	return area * sharpness * clamp(frontalPoseFactor, 0.15)
 }
 
 // EstimateFrontalPoseFactorFromAngles converts pitch/yaw/roll degrees to
@@ -45,7 +45,7 @@ func EstimateFrontalPoseFactorFromAngles(pitch, yaw, roll float64) float64 {
 	// Around 15-20 deg should already get a visible penalty.
 	const sigmaDeg = 18.0
 	norm := (pitch*pitch + yaw*yaw + roll*roll) / (sigmaDeg * sigmaDeg)
-	return clamp(math.Exp(-0.5*norm), 0.15, 1.0)
+	return clamp(math.Exp(-0.5*norm), 0.15)
 }
 
 // EstimateFrontalPoseFactorFromKeypoints estimates frontal factor from 5 landmarks:
@@ -69,22 +69,22 @@ func EstimateFrontalPoseFactorFromKeypoints(kps [5][2]float64) float64 {
 
 	// Yaw proxy: horizontal asymmetry of nose around eye/mouth centers.
 	yawRaw := (math.Abs(nose[0]-eyeMidX) + math.Abs(nose[0]-mouthMidX)) * 0.5 / eyeDist
-	yawNorm := clamp(yawRaw/0.35, 0, 1)
+	yawNorm := clamp(yawRaw/0.35, 0)
 
 	// Roll proxy: eye line tilt.
 	rollRad := math.Abs(math.Atan2(rightEye[1]-leftEye[1], rightEye[0]-leftEye[0]))
-	rollNorm := clamp(rollRad/(25.0*math.Pi/180.0), 0, 1)
+	rollNorm := clamp(rollRad/(25.0*math.Pi/180.0), 0)
 
 	// Pitch proxy: vertical nose position between eyes and mouth.
 	den := mouthMidY - eyeMidY
 	pitchNorm := 1.0
 	if math.Abs(den) > 1e-6 {
 		ratio := (nose[1] - eyeMidY) / den
-		pitchNorm = clamp(math.Abs(ratio-0.5)/0.35, 0, 1)
+		pitchNorm = clamp(math.Abs(ratio-0.5)/0.35, 0)
 	}
 
 	penalty := 1.7*yawNorm + 1.2*pitchNorm + 1.0*rollNorm
-	return clamp(math.Exp(-penalty), 0.15, 1.0)
+	return clamp(math.Exp(-penalty), 0.15)
 }
 
 func laplacianVariance(img image.Image) float64 {
@@ -146,7 +146,8 @@ func distance(a, b [2]float64) float64 {
 	return math.Hypot(dx, dy)
 }
 
-func clamp(v, minV, maxV float64) float64 {
+func clamp(v, minV float64) float64 {
+	const maxV = 1.0
 	if v < minV {
 		return minV
 	}

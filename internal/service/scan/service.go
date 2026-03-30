@@ -1,3 +1,4 @@
+// Package scan provides filesystem image scanning services.
 package scan
 
 import (

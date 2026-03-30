@@ -1,3 +1,4 @@
+// Package closer coordinates graceful shutdown of application resources.
 package closer
 
 import (

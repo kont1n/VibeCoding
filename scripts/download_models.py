@@ -6,7 +6,8 @@ import sys
 import urllib.request
 import urllib.error
 
-MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(PROJECT_DIR, 'models')
 
 MODELS = {
     'det_10g.onnx': {

@@ -5,6 +5,15 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Create app_settings table so default INSERT below never fails.
+-- (Migrations also create this table, but init.sql runs before app container starts.)
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Create app_settings default values
 INSERT INTO app_settings (key, value, description) VALUES
     ('app.version', '"1.0.0"', 'Application version'),

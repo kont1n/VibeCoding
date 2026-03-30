@@ -60,7 +60,7 @@ func CheckHealth(ctx context.Context, pool *pgxpool.Pool) (*HealthStatus, error)
 	return &HealthStatus{
 		Status:      "healthy",
 		Version:     version,
-		Connections: int32(stats.TotalConns()),
+		Connections: stats.TotalConns(),
 		Latency:     time.Since(start),
 		Extensions:  extensions,
 	}, nil

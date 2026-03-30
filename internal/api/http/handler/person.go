@@ -133,7 +133,7 @@ func (h *PersonHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if decodeErr := json.NewDecoder(r.Body).Decode(&req); decodeErr != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
@@ -247,7 +247,7 @@ func (h *PersonHandler) Relations(w http.ResponseWriter, r *http.Request) {
 
 	minSimilarity := float32(0.0)
 	if s := r.URL.Query().Get("min_similarity"); s != "" {
-		if v, err := strconv.ParseFloat(s, 32); err == nil {
+		if v, parseErr := strconv.ParseFloat(s, 32); parseErr == nil {
 			minSimilarity = float32(v)
 		}
 	}

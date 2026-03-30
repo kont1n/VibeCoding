@@ -17,10 +17,11 @@ import (
 	"github.com/kont1n/face-grouper/internal/service/organization"
 	"github.com/kont1n/face-grouper/internal/service/scan"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
+	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
 
-// diContainer управляет зависимостями приложения с lazy initialization.
-type diContainer struct {
+// DiContainer управляет зависимостями приложения с lazy initialization.
+type DiContainer struct {
 	api *cli.API
 	db  *database.DB
 
@@ -35,17 +36,17 @@ type diContainer struct {
 }
 
 // SetDatabase устанавливает соединение с базой данных.
-func (d *diContainer) SetDatabase(db *database.DB) {
+func (d *DiContainer) SetDatabase(db *database.DB) {
 	d.db = db
 }
 
 // NewDiContainer создаёт новый DI контейнер.
-func NewDiContainer() *diContainer {
-	return &diContainer{}
+func NewDiContainer() *DiContainer {
+	return &DiContainer{}
 }
 
 // API возвращает CLI API, инициализируя при необходимости.
-func (d *diContainer) API(ctx context.Context) *cli.API {
+func (d *DiContainer) API(ctx context.Context) *cli.API {
 	if d.api == nil {
 		d.api = cli.NewAPI(
 			d.ScanService(ctx),
@@ -58,7 +59,7 @@ func (d *diContainer) API(ctx context.Context) *cli.API {
 }
 
 // ScanService возвращает сервис сканирования.
-func (d *diContainer) ScanService(ctx context.Context) scan.ScanService {
+func (d *DiContainer) ScanService(ctx context.Context) scan.ScanService {
 	if d.scanService == nil {
 		d.scanService = scan.NewScanService(d.ScannerRepository())
 	}
@@ -66,7 +67,7 @@ func (d *diContainer) ScanService(ctx context.Context) scan.ScanService {
 }
 
 // ExtractionService возвращает сервис экстракции.
-func (d *diContainer) ExtractionService(ctx context.Context) extraction.ExtractionService {
+func (d *DiContainer) ExtractionService(ctx context.Context) extraction.ExtractionService {
 	if d.extractionService == nil {
 		d.extractionService = extraction.NewExtractionService(
 			config.AppConfig.Extract,
@@ -78,7 +79,7 @@ func (d *diContainer) ExtractionService(ctx context.Context) extraction.Extracti
 }
 
 // ClusterService возвращает сервис кластеризации.
-func (d *diContainer) ClusterService(ctx context.Context) clustering.ClusterService {
+func (d *DiContainer) ClusterService(ctx context.Context) clustering.ClusterService {
 	if d.clusterService == nil {
 		d.clusterService = clustering.NewClusterService()
 	}
@@ -86,7 +87,7 @@ func (d *diContainer) ClusterService(ctx context.Context) clustering.ClusterServ
 }
 
 // OrganizeService возвращает сервис организации.
-func (d *diContainer) OrganizeService(ctx context.Context) organization.OrganizeService {
+func (d *DiContainer) OrganizeService(ctx context.Context) organization.OrganizeService {
 	if d.organizeService == nil {
 		d.organizeService = organization.NewOrganizeService()
 	}
@@ -94,7 +95,7 @@ func (d *diContainer) OrganizeService(ctx context.Context) organization.Organize
 }
 
 // ScannerRepository возвращает репозиторий сканирования.
-func (d *diContainer) ScannerRepository() filesystem.ScannerRepository {
+func (d *DiContainer) ScannerRepository() filesystem.ScannerRepository {
 	if d.scannerRepo == nil {
 		d.scannerRepo = filesystem.NewScannerRepository()
 	}
@@ -102,7 +103,7 @@ func (d *diContainer) ScannerRepository() filesystem.ScannerRepository {
 }
 
 // DetectorPool возвращает пул детекторов.
-func (d *diContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository {
+func (d *DiContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository {
 	if d.detectorPool == nil {
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
@@ -135,13 +136,28 @@ func (d *diContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository 
 
 		pool := make([]ml.DetectorRepository, sessions)
 		for i := 0; i < sessions; i++ {
+			modelPath := filepath.Join(modelsDir, "det_10g.onnx")
 			det, err := ml.NewDetectorRepository(ml.DetectorConfig{
-				ModelPath: filepath.Join(modelsDir, "det_10g.onnx"),
+				ModelPath: modelPath,
 				Provider:  providerCfg,
 				DetThresh: float32(cfg.DetThresh),
 			})
 			if err != nil {
-				panic(fmt.Sprintf("failed to create detector %d: %v", i, err))
+				logger.Error(ctx, "failed to init detector repository",
+					"index", i,
+					"model_path", modelPath,
+					"preferred_provider", string(providerCfg.Preferred),
+					"force_cpu", providerCfg.ForceCPU,
+					"device_id", providerCfg.DeviceID,
+					"err", err,
+				)
+				// Не валим весь сервер: extraction вернёт ошибку при пустых пулах.
+				for j := 0; j < i; j++ {
+					if pool[j] != nil {
+						pool[j].Close()
+					}
+				}
+				return nil
 			}
 			pool[i] = det
 
@@ -157,7 +173,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository 
 }
 
 // RecognizerPool возвращает пул распознавателей.
-func (d *diContainer) RecognizerPool(ctx context.Context) []ml.RecognizerRepository {
+func (d *DiContainer) RecognizerPool(ctx context.Context) []ml.RecognizerRepository {
 	if d.recognizerPool == nil {
 		cfg := config.AppConfig.Extract
 		modelsDir := config.AppConfig.Models.Dir
@@ -190,12 +206,26 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []ml.RecognizerReposit
 
 		pool := make([]ml.RecognizerRepository, sessions)
 		for i := 0; i < sessions; i++ {
+			modelPath := filepath.Join(modelsDir, "w600k_r50.onnx")
 			rec, err := ml.NewRecognizerRepository(ml.RecognizerConfig{
-				ModelPath: filepath.Join(modelsDir, "w600k_r50.onnx"),
+				ModelPath: modelPath,
 				Provider:  providerCfg,
 			})
 			if err != nil {
-				panic(fmt.Sprintf("failed to create recognizer %d: %v", i, err))
+				logger.Error(ctx, "failed to init recognizer repository",
+					"index", i,
+					"model_path", modelPath,
+					"preferred_provider", string(providerCfg.Preferred),
+					"force_cpu", providerCfg.ForceCPU,
+					"device_id", providerCfg.DeviceID,
+					"err", err,
+				)
+				for j := 0; j < i; j++ {
+					if pool[j] != nil {
+						pool[j].Close()
+					}
+				}
+				return nil
 			}
 			pool[i] = rec
 
@@ -211,7 +241,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []ml.RecognizerReposit
 }
 
 // PersonRepository возвращает репозиторий персон.
-func (d *diContainer) PersonRepository() *postgres.PersonRepository {
+func (d *DiContainer) PersonRepository() *postgres.PersonRepository {
 	if d.db == nil {
 		return nil
 	}
@@ -219,7 +249,7 @@ func (d *diContainer) PersonRepository() *postgres.PersonRepository {
 }
 
 // FaceRepository возвращает репозиторий лиц.
-func (d *diContainer) FaceRepository() *postgres.FaceRepository {
+func (d *DiContainer) FaceRepository() *postgres.FaceRepository {
 	if d.db == nil {
 		return nil
 	}
@@ -227,7 +257,7 @@ func (d *diContainer) FaceRepository() *postgres.FaceRepository {
 }
 
 // PhotoRepository возвращает репозиторий фото.
-func (d *diContainer) PhotoRepository() *postgres.PhotoRepository {
+func (d *DiContainer) PhotoRepository() *postgres.PhotoRepository {
 	if d.db == nil {
 		return nil
 	}
@@ -235,7 +265,7 @@ func (d *diContainer) PhotoRepository() *postgres.PhotoRepository {
 }
 
 // RelationRepository возвращает репозиторий связей.
-func (d *diContainer) RelationRepository() *postgres.RelationRepository {
+func (d *DiContainer) RelationRepository() *postgres.RelationRepository {
 	if d.db == nil {
 		return nil
 	}
@@ -243,7 +273,7 @@ func (d *diContainer) RelationRepository() *postgres.RelationRepository {
 }
 
 // SessionRepository возвращает репозиторий сессий.
-func (d *diContainer) SessionRepository() *postgres.SessionRepository {
+func (d *DiContainer) SessionRepository() *postgres.SessionRepository {
 	if d.db == nil {
 		return nil
 	}

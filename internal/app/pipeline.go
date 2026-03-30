@@ -20,11 +20,11 @@ import (
 
 // Pipeline implements handler.PipelineRunner for async processing.
 type Pipeline struct {
-	di *diContainer
+	di *DiContainer
 }
 
 // NewPipeline creates a new Pipeline runner.
-func NewPipeline(di *diContainer) *Pipeline {
+func NewPipeline(di *DiContainer) *Pipeline {
 	return &Pipeline{di: di}
 }
 
@@ -91,7 +91,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	api := p.di.API(ctx)
 	stageDurations := make(map[string]time.Duration)
 
-	// --- Scan. ---
+	// --- Scan. ---.
 	send("scan", "Сканирование...", 0.05)
 	stageStart := time.Now()
 	files, err := api.Scan(ctx, inputDir)
@@ -108,11 +108,11 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		return
 	}
 
-	// --- Thumbnails. ---
+	// --- Thumbnails. ---.
 	_ = os.RemoveAll(thumbDir)
 	_ = os.MkdirAll(thumbDir, 0o750)
 
-	// --- Extract. ---
+	// --- Extract. ---.
 	send("extract", "Обнаружение лиц...", 0.05)
 	stageStart = time.Now()
 
@@ -130,7 +130,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		return
 	}
 
-	// --- Cluster. ---
+	// --- Cluster. ---.
 	send("cluster", "Группировка...", 0.05)
 	stageStart = time.Now()
 
@@ -143,7 +143,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	stageDurations["cluster"] = time.Since(stageStart)
 	send("cluster", "Группировка...", 1.0)
 
-	// --- Organize. ---
+	// --- Organize. ---.
 	send("organize", "Организация результатов...", 0.05)
 	stageStart = time.Now()
 
@@ -155,7 +155,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	stageDurations["organize"] = time.Since(stageStart)
 	send("organize", "Организация результатов...", 1.0)
 
-	// --- Report. ---
+	// --- Report. ---.
 	rpt := buildReport(start, appCfg, len(files), extractResult, persons)
 	if err := report.Save(rpt, outputDir); err != nil {
 		logger.Warn(ctx, "cannot save report", zap.Error(err))

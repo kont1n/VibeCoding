@@ -1,3 +1,4 @@
+// Package scanner discovers supported image files under a directory tree.
 package scanner
 
 import (

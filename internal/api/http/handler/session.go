@@ -93,7 +93,11 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	h.sessions.Store(sessionID, state)
 
 	// Start pipeline asynchronously.
-	progressCh, err := h.runner.RunPipeline(r.Context(), sessionID, req.InputDir)
+	// Don't tie long-running pipeline to the HTTP request context.
+	// If the client drops/aborts the connection, r.Context() will be canceled
+	// and extraction will stop with "context canceled".
+	pipelineCtx := context.WithoutCancel(r.Context())
+	progressCh, err := h.runner.RunPipeline(pipelineCtx, sessionID, req.InputDir)
 	if err != nil {
 		state.mu.Lock()
 		state.Status = statusFailed

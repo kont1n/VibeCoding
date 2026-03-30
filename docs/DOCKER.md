@@ -44,7 +44,7 @@ sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 
 # Verify installation
-docker run --rm --gpus all nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi
 ```
 
 ### AMD ROCm Setup (Optional)

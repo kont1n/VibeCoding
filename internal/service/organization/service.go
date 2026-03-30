@@ -1,3 +1,4 @@
+// Package organization provides output directory and report organization services.
 package organization
 
 import (
