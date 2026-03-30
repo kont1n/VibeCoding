@@ -25,17 +25,11 @@ func NewErrorHandler(outputDir string, db *database.DB) *ErrorHandler {
 type FileError struct {
 	File      string `json:"file"`
 	Error     string `json:"error"`
-	ErrorType string `json:"error_type"` // no_face, processing_error, unsupported_format
+	ErrorType string `json:"error_type"` // no_face, processing_error, unsupported_format.
 }
 
 // GetSessionErrors handles GET /api/v1/sessions/{id}/errors.
 func (h *ErrorHandler) GetSessionErrors(w http.ResponseWriter, r *http.Request) {
-	// Try database first.
-	if h.db != nil && h.db.Sessions != nil {
-		// Session errors from DB would require parsing the session by ID.
-		// For now, fall through to report.json.
-	}
-
 	// Fallback: load from report.json.
 	rpt, err := report.Load(h.outputDir)
 	if err != nil {
@@ -53,7 +47,7 @@ func (h *ErrorHandler) GetSessionErrors(w http.ResponseWriter, r *http.Request) 
 		errors = append(errors, fe)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"errors": errors,
 		"total":  len(errors),
 	})

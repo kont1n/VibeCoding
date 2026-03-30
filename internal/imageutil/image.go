@@ -15,7 +15,7 @@ import (
 // Image represents a BGR image with underlying byte data.
 // This is used for compatibility with ONNX models expecting BGR input.
 type Image struct {
-	Data   []uint8 // BGR interleaved data
+	Data   []uint8 // BGR interleaved data.
 	Width  int
 	Height int
 }
@@ -31,11 +31,11 @@ func NewImage(width, height int) *Image {
 
 // LoadImage loads an image from file and converts to BGR format.
 func LoadImage(path string) (*Image, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return DecodeImage(f)
 }
@@ -53,13 +53,13 @@ func DecodeImage(r io.Reader) (*Image, error) {
 
 	result := NewImage(width, height)
 
-	// Convert to BGR
+	// Convert to BGR.
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			c := img.At(x, y)
 			r, g, b, _ := c.RGBA()
 			// RGBA() returns 16-bit values, convert to 8-bit
-			// and store as BGR
+			// and store as BGR.
 			idx := (y*width + x) * 3
 			result.Data[idx] = uint8(b >> 8)
 			result.Data[idx+1] = uint8(g >> 8)
@@ -72,7 +72,7 @@ func DecodeImage(r io.Reader) (*Image, error) {
 
 // SaveImage saves an image to file as JPEG.
 func SaveImage(img *Image, path string, quality int) error {
-	// Convert BGR to RGB for encoding
+	// Convert BGR to RGB for encoding.
 	rgba := image.NewRGBA(image.Rect(0, 0, img.Width, img.Height))
 	for y := 0; y < img.Height; y++ {
 		for x := 0; x < img.Width; x++ {
@@ -86,11 +86,11 @@ func SaveImage(img *Image, path string, quality int) error {
 		}
 	}
 
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	opts := &jpeg.Options{Quality: quality}
 	if quality <= 0 {
@@ -150,7 +150,7 @@ func Resize(img *Image, width, height int) *Image {
 // If swapRGB is true, converts BGR to RGB.
 func BlobFromImage(img *Image, mean, std float32, swapRGB bool) ([]float32, error) {
 	size := img.Width * img.Height
-	blob := make([]float32, size*3) // 3 channels
+	blob := make([]float32, size*3) // 3 channels.
 
 	invStd := 1.0 / std
 
@@ -164,15 +164,15 @@ func BlobFromImage(img *Image, mean, std float32, swapRGB bool) ([]float32, erro
 			dstIdx := y*img.Width + x
 
 			if swapRGB {
-				// RGB order (NCHW)
-				blob[dstIdx] = (r - mean) * invStd        // R channel
-				blob[dstIdx+size] = (g - mean) * invStd   // G channel
-				blob[dstIdx+size*2] = (b - mean) * invStd // B channel
+				// RGB order (NCHW).
+				blob[dstIdx] = (r - mean) * invStd        // R channel.
+				blob[dstIdx+size] = (g - mean) * invStd   // G channel.
+				blob[dstIdx+size*2] = (b - mean) * invStd // B channel.
 			} else {
-				// BGR order (NCHW)
-				blob[dstIdx] = (b - mean) * invStd        // B channel
-				blob[dstIdx+size] = (g - mean) * invStd   // G channel
-				blob[dstIdx+size*2] = (r - mean) * invStd // R channel
+				// BGR order (NCHW).
+				blob[dstIdx] = (b - mean) * invStd        // B channel.
+				blob[dstIdx+size] = (g - mean) * invStd   // G channel.
+				blob[dstIdx+size*2] = (r - mean) * invStd // R channel.
 			}
 		}
 	}
@@ -182,7 +182,7 @@ func BlobFromImage(img *Image, mean, std float32, swapRGB bool) ([]float32, erro
 
 // Crop extracts a region from the image.
 func Crop(img *Image, x, y, width, height int) *Image {
-	// Clamp to image bounds
+	// Clamp to image bounds.
 	if x < 0 {
 		width += x
 		x = 0
@@ -217,23 +217,23 @@ func Crop(img *Image, x, y, width, height int) *Image {
 }
 
 // WarpAffine applies an affine transformation to the image.
-// M is a 2x3 transformation matrix (src -> dst). We compute inverse (dst -> src).
-func WarpAffine(img *Image, M [2][3]float64, width, height int) *Image {
+// m is a 2x3 transformation matrix (src -> dst). We compute inverse (dst -> src).
+func WarpAffine(img *Image, m [2][3]float64, width, height int) *Image {
 	result := NewImage(width, height)
 
-	// Compute inverse of the 2x3 affine matrix
-	// M = [a b tx; c d ty] represents: dst.x = a*src.x + b*src.y + tx
-	// We need inverse: src.x = a'*dst.x + b'*dst.y + tx'
-	a, b, tx := M[0][0], M[0][1], M[0][2]
-	c, d, ty := M[1][0], M[1][1], M[1][2]
+	// Compute inverse of the 2x3 affine matrix.
+	// m = [a b tx; c d ty] represents: dst.x = a*src.x + b*src.y + tx.
+	// We need inverse: src.x = a'*dst.x + b'*dst.y + tx'.
+	a, b, tx := m[0][0], m[0][1], m[0][2]
+	c, d, ty := m[1][0], m[1][1], m[1][2]
 
-	// Compute determinant of 2x2 linear part
+	// Compute determinant of 2x2 linear part.
 	det := a*d - b*c
 	if det == 0 {
-		det = 1e-10 // Avoid division by zero
+		det = 1e-10 // Avoid division by zero.
 	}
 
-	// Inverse of 2x2 matrix: [a b; c d]^-1 = 1/det * [d -b; -c a]
+	// Inverse of 2x2 matrix: [a b; c d]^-1 = 1/det * [d -b; -c a].
 	// For affine transform with translation:
 	invDet := 1.0 / det
 	invA := d * invDet
@@ -245,11 +245,11 @@ func WarpAffine(img *Image, M [2][3]float64, width, height int) *Image {
 
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			// Apply inverse transform to find source coordinates
+			// Apply inverse transform to find source coordinates.
 			srcX := invA*float64(x) + invB*float64(y) + invTx
 			srcY := invC*float64(x) + invD*float64(y) + invTy
 
-			// Bilinear interpolation
+			// Bilinear interpolation.
 			x0 := int(math.Floor(srcX))
 			y0 := int(math.Floor(srcY))
 			x1 := x0 + 1
@@ -261,12 +261,10 @@ func WarpAffine(img *Image, M [2][3]float64, width, height int) *Image {
 			for c := 0; c < 3; c++ {
 				var v float64
 
-				// Check bounds and interpolate
+				// Check bounds and interpolate.
 				if x0 >= 0 && x0 < img.Width && y0 >= 0 && y0 < img.Height {
 					v00 := float64(img.Data[(y0*img.Width+x0)*3+c])
-					v01 := 0.0
-					v10 := 0.0
-					v11 := 0.0
+					var v01, v10, v11 float64
 
 					if x1 < img.Width {
 						v01 = float64(img.Data[(y0*img.Width+x1)*3+c])
@@ -290,7 +288,7 @@ func WarpAffine(img *Image, M [2][3]float64, width, height int) *Image {
 					v1 := v10*(1-dx) + v11*dx
 					v = v0*(1-dy) + v1*dy
 				} else {
-					// Out of bounds - use border constant (black)
+					// Out of bounds - use border constant (black).
 					v = 0
 				}
 
@@ -336,7 +334,7 @@ func (img *Image) ToRGBA() *image.RGBA {
 
 // DrawRectangle draws a rectangle on the image (in-place).
 func (img *Image) DrawRectangle(x1, y1, x2, y2 int, r, g, b uint8) {
-	// Draw horizontal lines
+	// Draw horizontal lines.
 	for x := x1; x <= x2 && x < img.Width; x++ {
 		if y1 >= 0 && y1 < img.Height {
 			idx := (y1*img.Width + x) * 3
@@ -352,7 +350,7 @@ func (img *Image) DrawRectangle(x1, y1, x2, y2 int, r, g, b uint8) {
 		}
 	}
 
-	// Draw vertical lines
+	// Draw vertical lines.
 	for y := y1; y <= y2 && y < img.Height; y++ {
 		if x1 >= 0 && x1 < img.Width {
 			idx := (y*img.Width + x1) * 3
@@ -372,7 +370,7 @@ func (img *Image) DrawRectangle(x1, y1, x2, y2 int, r, g, b uint8) {
 // SaveJPEG saves an image as JPEG to the specified path.
 func SaveJPEG(img *Image, path string, quality int) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	return SaveImage(img, path, quality)

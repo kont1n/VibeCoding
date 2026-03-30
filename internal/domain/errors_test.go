@@ -56,7 +56,7 @@ func TestAppError_Unwrap(t *testing.T) {
 	}
 
 	unwrapped := appErr.Unwrap()
-	if unwrapped != underlying {
+	if !errors.Is(unwrapped, underlying) {
 		t.Errorf("Unwrap() = %v, want %v", unwrapped, underlying)
 	}
 }
@@ -82,7 +82,7 @@ func TestNewAppError(t *testing.T) {
 	if err.Op != "Test.Op" {
 		t.Errorf("Op = %q, want %q", err.Op, "Test.Op")
 	}
-	if err.Err != underlying {
+	if !errors.Is(err.Err, underlying) {
 		t.Errorf("Err = %v, want %v", err.Err, underlying)
 	}
 	if err.Message != "user message" {

@@ -107,7 +107,6 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	total := len(files)
 
 	for _, f := range files {
-		f := f // capture loop variable
 		g.Go(func() error {
 			// Acquire semaphore.
 			select {
@@ -122,7 +121,7 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 			mu.Lock()
 			processed++
 			if err != nil {
-				fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, f, err)
+				_, _ = fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, f, err)
 				logger.Error(ctx, "file processing error",
 					zap.String("path", f),
 					zap.Error(err),
@@ -130,12 +129,12 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 				res.FileErrors[f] = err.Error()
 				res.ErrorCount++
 			} else {
-				fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, f, len(faces))
+				_, _ = fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, f, len(faces))
 				res.Faces = append(res.Faces, faces...)
 			}
 			mu.Unlock()
 
-			return nil // не прерываем обработку из-за ошибки одного файла
+			return nil // не прерываем обработку из-за ошибки одного файла.
 		})
 	}
 

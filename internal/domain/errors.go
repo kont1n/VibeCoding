@@ -20,10 +20,10 @@ var (
 
 // AppError represents an application-level error with context.
 type AppError struct {
-	Op      string // Operation name, e.g., "PersonService.GroupFaces"
-	Err     error  // Underlying error
-	Message string // User-friendly message
-	Code    string // Error code for API responses
+	Op      string // Operation name, e.g., "PersonService.GroupFaces".
+	Err     error  // Underlying error.
+	Message string // User-friendly message.
+	Code    string // Error code for API responses.
 }
 
 // Error implements the error interface.
@@ -58,7 +58,7 @@ func NewAppError(op string, err error, message, code string) *AppError {
 }
 
 // NotFoundError creates a not found error.
-func NotFoundError(op string, resource string) *AppError {
+func NotFoundError(op, resource string) *AppError {
 	return &AppError{
 		Op:      op,
 		Err:     ErrNotFound,
@@ -68,7 +68,7 @@ func NotFoundError(op string, resource string) *AppError {
 }
 
 // InvalidInputError creates an invalid input error.
-func InvalidInputError(op string, message string) *AppError {
+func InvalidInputError(op, message string) *AppError {
 	return &AppError{
 		Op:      op,
 		Err:     ErrInvalidInput,
@@ -78,7 +78,7 @@ func InvalidInputError(op string, message string) *AppError {
 }
 
 // AlreadyExistsError creates an already exists error.
-func AlreadyExistsError(op string, resource string) *AppError {
+func AlreadyExistsError(op, resource string) *AppError {
 	return &AppError{
 		Op:      op,
 		Err:     ErrAlreadyExists,

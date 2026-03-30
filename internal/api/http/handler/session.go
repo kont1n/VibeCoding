@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const statusFailed = "failed"
+
 // PipelineRunner is the interface for running the face processing pipeline.
 type PipelineRunner interface {
 	// RunPipeline starts async processing for the given input directory.
@@ -19,9 +21,9 @@ type PipelineRunner interface {
 // ProgressEvent represents a pipeline progress update.
 type ProgressEvent struct {
 	SessionID      string  `json:"session_id"`
-	Stage          string  `json:"stage"`           // scan, extract, cluster, organize
-	StageLabel     string  `json:"stage_label"`     // Human-readable label
-	Progress       float64 `json:"progress"`        // 0.0 - 1.0
+	Stage          string  `json:"stage"`       // scan, extract, cluster, organize.
+	StageLabel     string  `json:"stage_label"` // Human-readable label.
+	Progress       float64 `json:"progress"`    // 0.0 - 1.0
 	ProcessedItems int     `json:"processed_items"`
 	TotalItems     int     `json:"total_items"`
 	CurrentFile    string  `json:"current_file,omitempty"`
@@ -33,13 +35,13 @@ type ProgressEvent struct {
 // SessionHandler handles processing session endpoints.
 type SessionHandler struct {
 	runner   PipelineRunner
-	sessions sync.Map // sessionID -> sessionState
+	sessions sync.Map // sessionID -> sessionState.
 }
 
 type sessionState struct {
 	ID        string
 	InputDir  string
-	Status    string // pending, processing, completed, failed
+	Status    string // pending, processing, completed, failed.
 	Stage     string
 	Progress  float64
 	StartedAt time.Time
@@ -94,7 +96,7 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	progressCh, err := h.runner.RunPipeline(r.Context(), sessionID, req.InputDir)
 	if err != nil {
 		state.mu.Lock()
-		state.Status = "failed"
+		state.Status = statusFailed
 		state.Error = err.Error()
 		state.mu.Unlock()
 
@@ -110,7 +112,7 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 			state.Progress = event.Progress
 			if event.Done {
 				if event.Error != "" {
-					state.Status = "failed"
+					state.Status = statusFailed
 					state.Error = event.Error
 				} else {
 					state.Status = "completed"
@@ -136,11 +138,15 @@ func (h *SessionHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state := val.(*sessionState)
+	state, ok := val.(*sessionState)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal state error"})
+		return
+	}
 	state.mu.RLock()
 	defer state.mu.RUnlock()
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": state.ID,
 		"status":     state.Status,
 		"stage":      state.Stage,
@@ -178,25 +184,33 @@ func (h *SessionHandler) StreamProgress(w http.ResponseWriter, r *http.Request) 
 		case <-ticker.C:
 			val, ok := h.sessions.Load(sessionID)
 			if !ok {
-				fmt.Fprintf(w, "event: error\ndata: {\"error\":\"session not found\"}\n\n")
+				_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"session not found\"}\n\n")
 				flusher.Flush()
 				return
 			}
 
-			state := val.(*sessionState)
+			state, ok := val.(*sessionState)
+			if !ok {
+				_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"internal state error\"}\n\n")
+				flusher.Flush()
+				return
+			}
 			state.mu.RLock()
 			event := ProgressEvent{
-				SessionID:  state.ID,
-				Stage:      state.Stage,
-				Progress:   state.Progress,
-				Done:       state.Status == "completed" || state.Status == "failed",
-				Error:      state.Error,
-				ElapsedMs:  time.Since(state.StartedAt).Milliseconds(),
+				SessionID: state.ID,
+				Stage:     state.Stage,
+				Progress:  state.Progress,
+				Done:      state.Status == "completed" || state.Status == statusFailed,
+				Error:     state.Error,
+				ElapsedMs: time.Since(state.StartedAt).Milliseconds(),
 			}
 			state.mu.RUnlock()
 
-			data, _ := json.Marshal(event)
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			data, err := json.Marshal(event)
+			if err != nil {
+				return
+			}
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 
 			if event.Done {

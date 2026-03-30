@@ -10,11 +10,11 @@ import (
 
 // HealthStatus represents the health status of the application.
 type HealthStatus struct {
-	Status    string                 `json:"status"`
-	Timestamp time.Time              `json:"timestamp"`
-	Version   string                 `json:"version,omitempty"`
-	DB        string                 `json:"db,omitempty"`
-	Details   map[string]interface{} `json:"details,omitempty"`
+	Status    string         `json:"status"`
+	Timestamp time.Time      `json:"timestamp"`
+	Version   string         `json:"version,omitempty"`
+	DB        string         `json:"db,omitempty"`
+	Details   map[string]any `json:"details,omitempty"`
 }
 
 // HealthChecker defines the interface for health check dependencies.
@@ -45,7 +45,7 @@ func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		Status:    "ok",
 		Timestamp: time.Now().UTC(),
 		Version:   h.version,
-		Details:   make(map[string]interface{}),
+		Details:   make(map[string]any),
 	}
 
 	// Check database connection if checker is provided.
@@ -66,7 +66,7 @@ func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(health)
+	_ = json.NewEncoder(w).Encode(health)
 }
 
 // ReadyCheck handles the /ready endpoint for Kubernetes readiness probes.
@@ -88,10 +88,10 @@ func (h *HealthHandler) ReadyCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if ready {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status":  "not ready",
 			"reasons": reasons,
 		})

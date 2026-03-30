@@ -59,7 +59,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	sessionID := uuid.New().String()
 	sessionDir := filepath.Join(h.uploadDir, sessionID)
 
-	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+	if err := os.MkdirAll(sessionDir, 0o750); err != nil { //nolint:gosec
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "failed to create upload directory",
 		})
@@ -71,7 +71,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
-		os.RemoveAll(sessionDir)
+		_ = os.RemoveAll(sessionDir)
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "no files provided",
 		})
@@ -85,7 +85,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			// Handle zip archive.
 			extracted, size, err := h.handleZip(fileHeader, sessionDir)
 			if err != nil {
-				os.RemoveAll(sessionDir)
+				_ = os.RemoveAll(sessionDir)
 				writeJSON(w, http.StatusBadRequest, map[string]string{
 					"error": "failed to process zip: " + err.Error(),
 				})
@@ -108,22 +108,22 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		dstPath := filepath.Join(sessionDir, fileHeader.Filename)
 		// Prevent path traversal.
 		if !strings.HasPrefix(filepath.Clean(dstPath), filepath.Clean(sessionDir)) {
-			src.Close()
+			_ = src.Close()
 			continue
 		}
 
-		dst, err := os.Create(dstPath)
+		dst, err := os.Create(dstPath) //nolint:gosec
 		if err != nil {
-			src.Close()
+			_ = src.Close()
 			continue
 		}
 
 		written, err := io.Copy(dst, src)
-		src.Close()
-		dst.Close()
+		_ = src.Close()
+		_ = dst.Close()
 
 		if err != nil {
-			os.Remove(dstPath)
+			_ = os.Remove(dstPath)
 			continue
 		}
 
@@ -132,7 +132,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(savedFiles) == 0 {
-		os.RemoveAll(sessionDir)
+		_ = os.RemoveAll(sessionDir)
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "no valid image files found in upload",
 		})
@@ -150,7 +150,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir string) ([]string, int64, error) {
+func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir string) (files []string, totalSize int64, err error) {
 	src, err := fileHeader.Open()
 	if err != nil {
 		return nil, 0, err
@@ -159,14 +159,14 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 	// Save zip to temp file for processing.
 	tmpFile, err := os.CreateTemp("", "upload-*.zip")
 	if err != nil {
-		src.Close()
+		_ = src.Close()
 		return nil, 0, err
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
-	written, err := io.Copy(tmpFile, src)
-	src.Close()
-	tmpFile.Close()
+	_, err = io.Copy(tmpFile, src)
+	_ = src.Close()
+	_ = tmpFile.Close()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -174,14 +174,11 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 	// Zip bomb protection: limit total extracted size to 2GB.
 	const maxExtractedSize = 2 << 30
 
-	reader, err := zip.OpenReader(tmpFile.Name())
+	reader, err := zip.OpenReader(tmpFile.Name()) //nolint:gosec
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid zip file: %w", err)
 	}
-	defer reader.Close()
-
-	var files []string
-	var totalSize int64
+	defer func() { _ = reader.Close() }()
 
 	for _, f := range reader.File {
 		if f.FileInfo().IsDir() {
@@ -200,41 +197,40 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 		}
 
 		// Check uncompressed size.
-		if totalSize+int64(f.UncompressedSize64) > maxExtractedSize {
+		if totalSize+int64(f.UncompressedSize64) > maxExtractedSize { //nolint:gosec
 			return nil, 0, fmt.Errorf("zip extraction would exceed %d bytes limit", maxExtractedSize)
 		}
 
-		rc, err := f.Open()
-		if err != nil {
+		rc, openErr := f.Open()
+		if openErr != nil {
 			continue
 		}
 
-		dst, err := os.Create(destPath)
-		if err != nil {
-			rc.Close()
+		dst, createErr := os.Create(destPath) //nolint:gosec
+		if createErr != nil {
+			_ = rc.Close()
 			continue
 		}
 
 		// Limit copy to prevent zip bomb.
-		n, err := io.Copy(dst, io.LimitReader(rc, maxExtractedSize-totalSize))
-		rc.Close()
-		dst.Close()
+		n, copyErr := io.Copy(dst, io.LimitReader(rc, maxExtractedSize-totalSize))
+		_ = rc.Close()
+		_ = dst.Close()
 
-		if err != nil {
-			os.Remove(destPath)
+		if copyErr != nil {
+			_ = os.Remove(destPath)
 			continue
 		}
 
 		files = append(files, filepath.Base(f.Name))
 		totalSize += n
-		_ = written // suppress unused
 	}
 
 	return files, totalSize, nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }

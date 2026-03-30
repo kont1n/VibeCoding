@@ -26,7 +26,7 @@ func Serve(outputDir string, port int) error {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(indexHTML)
+		_, _ = w.Write(indexHTML)
 	})
 
 	mux.HandleFunc("/api/report", func(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +37,7 @@ func Serve(outputDir string, port int) error {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		_, _ = w.Write(data)
 	})
 
 	fs := http.FileServer(http.Dir(outputDir))

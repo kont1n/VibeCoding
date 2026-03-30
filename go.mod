@@ -1,6 +1,6 @@
 module github.com/kont1n/face-grouper
 
-go 1.24
+go 1.25.6
 
 require (
 	github.com/bufbuild/buf v1.66.1
@@ -12,9 +12,12 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/securego/gosec/v2 v2.25.0
+	github.com/stretchr/testify v1.11.1
 	github.com/vektra/mockery/v2 v2.53.6
 	github.com/yalue/onnxruntime_go v1.23.0
 	go.uber.org/zap v1.27.1
+	golang.org/x/sync v0.20.0
+	golang.org/x/time v0.15.0
 	gonum.org/v1/gonum v0.17.0
 	gotest.tools/gotestsum v1.13.0
 	mvdan.cc/gofumpt v0.9.2
@@ -268,7 +271,6 @@ require (
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/tetratelabs/wazero v1.11.0 // indirect
@@ -313,11 +315,9 @@ require (
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
 	google.golang.org/genai v1.50.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,10 +32,16 @@ func (r *SessionRepository) Create(ctx context.Context, session *model.Processin
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
 	`
 
-	errorDetailsJSON, _ := json.Marshal(session.ErrorDetails)
-	configJSON, _ := json.Marshal(session.Config)
+	errorDetailsJSON, err := json.Marshal(session.ErrorDetails)
+	if err != nil {
+		return fmt.Errorf("marshal error details: %w", err)
+	}
+	configJSON, err := json.Marshal(session.Config)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		session.ID,
 		session.Status,
 		nullStringToSql(session.Stage),
@@ -150,10 +157,16 @@ func (r *SessionRepository) Update(ctx context.Context, session *model.Processin
 		WHERE id = $1
 	`
 
-	errorDetailsJSON, _ := json.Marshal(session.ErrorDetails)
-	configJSON, _ := json.Marshal(session.Config)
+	errorDetailsJSON, err := json.Marshal(session.ErrorDetails)
+	if err != nil {
+		return fmt.Errorf("marshal error details: %w", err)
+	}
+	configJSON, err := json.Marshal(session.Config)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		session.ID,
 		session.Status,
 		nullStringToSql(session.Stage),
@@ -168,14 +181,14 @@ func (r *SessionRepository) Update(ctx context.Context, session *model.Processin
 }
 
 // UpdateProgress updates only the progress fields.
-func (r *SessionRepository) UpdateProgress(ctx context.Context, id uuid.UUID, progress float32, processedItems int, errors int) error {
+func (r *SessionRepository) UpdateProgress(ctx context.Context, id uuid.UUID, progress float32, processedItems, errorCount int) error {
 	query := `
 		UPDATE processing_sessions
 		SET progress = $2, processed_items = $3, errors = $4
 		WHERE id = $1
 	`
 
-	_, err := r.pool.Exec(ctx, query, id, progress, processedItems, errors)
+	_, err := r.pool.Exec(ctx, query, id, progress, processedItems, errorCount)
 	return err
 }
 

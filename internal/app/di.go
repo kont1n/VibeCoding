@@ -111,7 +111,7 @@ func (d *diContainer) DetectorPool(ctx context.Context) []ml.DetectorRepository 
 		var preferred provider.ProviderType
 		if cfg.GPU {
 			preferred = provider.ProviderCUDA
-			if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+			if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
 				preferred = provider.ParseProviderType(cfg.ProviderPriority)
 			}
 		} else {
@@ -166,7 +166,7 @@ func (d *diContainer) RecognizerPool(ctx context.Context) []ml.RecognizerReposit
 		var preferred provider.ProviderType
 		if cfg.GPU {
 			preferred = provider.ProviderCUDA
-			if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+			if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
 				preferred = provider.ParseProviderType(cfg.ProviderPriority)
 			}
 		} else {

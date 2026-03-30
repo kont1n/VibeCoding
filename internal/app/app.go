@@ -1,3 +1,4 @@
+// Package app provides the main application logic.
 package app
 
 import (
@@ -7,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/database"
@@ -18,8 +21,9 @@ import (
 	"github.com/kont1n/face-grouper/internal/web"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
-	"go.uber.org/zap"
 )
+
+const providerPriorityAuto = "auto"
 
 // App представляет основное приложение.
 type App struct {
@@ -68,7 +72,7 @@ func (a *App) initDatabase(ctx context.Context) error {
 
 	db, err := database.New(ctx, cfg)
 	if err != nil {
-		// Database is optional for now, log warning and continue
+		// Database is optional for now, log warning and continue.
 		logger.Warn(ctx, "database initialization failed (running without database)",
 			zap.Error(err),
 		)
@@ -77,13 +81,13 @@ func (a *App) initDatabase(ctx context.Context) error {
 
 	a.diContainer.SetDatabase(db)
 
-	// Register database close
-	closer.AddNamed("database", func(ctx context.Context) error {
+	// Register database close.
+	closer.AddNamed("database", func(_ context.Context) error {
 		db.Close()
 		return nil
 	})
 
-	// Log database health
+	// Log database health.
 	health, err := db.Health(ctx)
 	if err != nil {
 		logger.Warn(ctx, "database health check failed", zap.Error(err))
@@ -133,14 +137,14 @@ func (a *App) runViewOnly(ctx context.Context) error {
 
 // runProcess запускает полный пайплайн обработки.
 func (a *App) runProcess(ctx context.Context) error {
-	// Select and initialize ONNX Runtime provider
+	// Select and initialize ONNX Runtime provider.
 	cfg := config.AppConfig.Extract
 
-	// Determine preferred provider type
+	// Determine preferred provider type.
 	var preferred provider.ProviderType
 	if cfg.GPU {
-		preferred = provider.ProviderCUDA // Default to CUDA for GPU
-		if cfg.ProviderPriority != "" && cfg.ProviderPriority != "auto" {
+		preferred = provider.ProviderCUDA // Default to CUDA for GPU.
+		if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
 			preferred = provider.ParseProviderType(cfg.ProviderPriority)
 		}
 	} else {
@@ -155,10 +159,10 @@ func (a *App) runProcess(ctx context.Context) error {
 		LogSelection:  true,
 	}
 
-	// Determine library path
+	// Determine library path.
 	var ortLibPath string
 	if cfg.GPU && !cfg.ForceCPU {
-		// Try GPU path first
+		// Try GPU path first.
 		ortLibPath = "runtime/onnxruntime-win-x64-gpu-1.23.0/lib/onnxruntime.dll"
 	}
 
@@ -167,7 +171,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	}
 	defer ml.DestroyORT()
 
-	// Log selected provider
+	// Log selected provider.
 	selectedProvider := ml.GetSelectedProvider()
 	logger.Info(ctx, "ONNX Runtime provider initialized",
 		zap.String("provider", selectedProvider.Name),
@@ -181,105 +185,107 @@ func (a *App) runProcess(ctx context.Context) error {
 	outputDir := appCfg.App.OutputDir
 	thumbDir := filepath.Join(outputDir, ".thumbnails")
 
-	// Создаём директорию вывода
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	// Создаём директорию вывода.
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		return fmt.Errorf("cannot create output dir: %w", err)
 	}
 
-	// Создаём лог-файл
-	logFile, err := os.Create(filepath.Join(outputDir, "processing.log"))
+	// Создаём лог-файл.
+	logFile, err := os.Create(filepath.Join(outputDir, "processing.log")) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("cannot create log file: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 	w := io.MultiWriter(os.Stdout, logFile)
 
 	start := time.Now()
 	stageDurations := make(map[string]time.Duration)
 
-	// --- Scan ---
+	// --- Scan. ---
 	stageStart := time.Now()
-	fmt.Fprintf(w, "=== Scanning directory ===\n")
+	_, _ = fmt.Fprintf(w, "=== Scanning directory ===\n")
 	files, err := api.Scan(ctx, appCfg.App.InputDir)
 	if err != nil {
 		return fmt.Errorf("scan error: %w", err)
 	}
-	fmt.Fprintf(w, "Found %d image(s)\n\n", len(files))
+	_, _ = fmt.Fprintf(w, "Found %d image(s)\n\n", len(files))
 	stageDurations["scan"] = time.Since(stageStart)
 
 	if len(files) == 0 {
-		fmt.Fprintf(w, "No images found, nothing to do.\n")
+		_, _ = fmt.Fprintf(w, "No images found, nothing to do.\n")
 		return nil
 	}
 
-	// --- Thumbnails dir ---
-	if err := os.RemoveAll(thumbDir); err != nil {
+	// --- Thumbnails dir. ---
+	err = os.RemoveAll(thumbDir)
+	if err != nil {
 		return fmt.Errorf("cannot clean thumbnails dir: %w", err)
 	}
-	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+	err = os.MkdirAll(thumbDir, 0o750)
+	if err != nil {
 		return fmt.Errorf("cannot create thumbnails dir: %w", err)
 	}
 
-	// --- Extract ---
+	// --- Extract. ---
 	stageStart = time.Now()
-	fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
-	fmt.Fprintf(w, "Mode: %s, %d worker(s)\n", selectedProvider.Name, appCfg.Extract.Workers)
+	_, _ = fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
+	_, _ = fmt.Fprintf(w, "Mode: %s, %d worker(s)\n", selectedProvider.Name, appCfg.Extract.Workers)
 	if appCfg.Extract.MaxDim > 0 {
-		fmt.Fprintf(w, "Pre-resize: max %dpx\n", appCfg.Extract.MaxDim)
+		_, _ = fmt.Fprintf(w, "Pre-resize: max %dpx\n", appCfg.Extract.MaxDim)
 	}
 
 	extractResult, err := api.Extract(ctx, files, thumbDir, w)
 	if err != nil {
 		return fmt.Errorf("extraction error: %w", err)
 	}
-	fmt.Fprintf(w, "\nTotal faces detected: %d (errors: %d)\n\n", len(extractResult.Faces), extractResult.ErrorCount)
+	_, _ = fmt.Fprintf(w, "\nTotal faces detected: %d (errors: %d)\n\n", len(extractResult.Faces), extractResult.ErrorCount)
 	stageDurations["extract"] = time.Since(stageStart)
 
 	if len(extractResult.Faces) == 0 {
-		fmt.Fprintf(w, "No faces found, nothing to group.\n")
+		_, _ = fmt.Fprintf(w, "No faces found, nothing to group.\n")
 		return nil
 	}
 
-	// --- Cluster ---
+	// --- Cluster. ---
 	stageStart = time.Now()
-	fmt.Fprintf(w, "=== Clustering faces ===\n")
+	_, _ = fmt.Fprintf(w, "=== Clustering faces ===\n")
 	clusters, err := api.Cluster(ctx, extractResult.Faces, appCfg.Cluster.Threshold)
 	if err != nil {
 		return fmt.Errorf("clustering error: %w", err)
 	}
-	fmt.Fprintf(w, "Found %d person(s)\n\n", len(clusters))
+	_, _ = fmt.Fprintf(w, "Found %d person(s)\n\n", len(clusters))
 	stageDurations["cluster"] = time.Since(stageStart)
 
-	// --- Organize ---
+	// --- Organize. ---
 	stageStart = time.Now()
-	fmt.Fprintf(w, "=== Organizing output ===\n")
+	_, _ = fmt.Fprintf(w, "=== Organizing output ===\n")
 	persons, err := api.Organize(ctx, clusters, outputDir, appCfg.Organizer.AvatarUpdateThreshold, w)
 	if err != nil {
 		return fmt.Errorf("organizer error: %w", err)
 	}
 	stageDurations["organize_avatar"] = time.Since(stageStart)
 
-	// --- Build report ---
-	rpt := a.buildReport(start, appCfg, len(files), extractResult, persons, stageDurations)
+	// --- Build report. ---
+	rpt := a.buildReport(start, appCfg, len(files), extractResult, persons)
 
 	if err := report.Save(rpt, outputDir); err != nil {
-		fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
+		_, _ = fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
 	}
 
-	// --- Summary ---
+	// --- Summary. ---
 	a.printSummary(w, rpt, stageDurations)
 
-	// --- Web UI ---
+	// --- Web UI. ---
 	if appCfg.Web.Serve {
-		fmt.Fprintf(w, "\n=== Starting web UI ===\n")
+		_, _ = fmt.Fprintf(w, "\n=== Starting web UI ===\n")
 		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)
 	}
 
-	fmt.Fprintf(w, "\nTip: run with --serve to view results in browser, or --view to view previous results\n")
+	_, _ = fmt.Fprintf(w, "\nTip: run with --serve to view results in browser, or --view to view previous results\n")
 	return nil
 }
 
-func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo, stageDurations map[string]time.Duration) *report.Report {
+func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
 	rpt := &report.Report{
 		StartedAt:    start,
 		InputDir:     cfg.App.InputDir,
@@ -312,19 +318,19 @@ func (a *App) buildReport(start time.Time, cfg *config.Config, totalImages int, 
 }
 
 func (a *App) printSummary(w io.Writer, rpt *report.Report, stageDurations map[string]time.Duration) {
-	fmt.Fprintf(w, "\n=== Summary ===\n")
-	fmt.Fprintf(w, "Images:  %d\n", rpt.TotalImages)
-	fmt.Fprintf(w, "Faces:   %d\n", rpt.TotalFaces)
-	fmt.Fprintf(w, "Persons: %d\n", rpt.TotalPersons)
-	fmt.Fprintf(w, "Errors:  %d\n", rpt.Errors)
-	fmt.Fprintf(w, "Time:    %s\n", rpt.Duration)
-	fmt.Fprintf(w, "\n=== Stage timings ===\n")
-	fmt.Fprintf(w, "Scan:           %s\n", stageDurations["scan"].Round(time.Millisecond))
-	fmt.Fprintf(w, "Extract:        %s\n", stageDurations["extract"].Round(time.Millisecond))
-	fmt.Fprintf(w, "Cluster:        %s\n", stageDurations["cluster"].Round(time.Millisecond))
-	fmt.Fprintf(w, "OrganizeAvatar: %s\n", stageDurations["organize_avatar"].Round(time.Millisecond))
-	fmt.Fprintf(w, "Report:  %s\n", filepath.Join(rpt.OutputDir, "report.json"))
-	fmt.Fprintf(w, "Log:     %s\n", filepath.Join(rpt.OutputDir, "processing.log"))
+	_, _ = fmt.Fprintf(w, "\n=== Summary ===\n")
+	_, _ = fmt.Fprintf(w, "Images:  %d\n", rpt.TotalImages)
+	_, _ = fmt.Fprintf(w, "Faces:   %d\n", rpt.TotalFaces)
+	_, _ = fmt.Fprintf(w, "Persons: %d\n", rpt.TotalPersons)
+	_, _ = fmt.Fprintf(w, "Errors:  %d\n", rpt.Errors)
+	_, _ = fmt.Fprintf(w, "Time:    %s\n", rpt.Duration)
+	_, _ = fmt.Fprintf(w, "\n=== Stage timings ===\n")
+	_, _ = fmt.Fprintf(w, "Scan:           %s\n", stageDurations["scan"].Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "Extract:        %s\n", stageDurations["extract"].Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "Cluster:        %s\n", stageDurations["cluster"].Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "OrganizeAvatar: %s\n", stageDurations["organize_avatar"].Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "Report:  %s\n", filepath.Join(rpt.OutputDir, "report.json"))
+	_, _ = fmt.Fprintf(w, "Log:     %s\n", filepath.Join(rpt.OutputDir, "processing.log"))
 }
 
 func (a *App) runWebUI(ctx context.Context, outputDir string, port int) error {
@@ -341,5 +347,5 @@ func (a *App) runWebUI(ctx context.Context, outputDir string, port int) error {
 		DB:        a.diContainer.db,
 	}, pipeline)
 
-	return srv.ListenAndServe()
+	return srv.ListenAndServe() //nolint:contextcheck
 }

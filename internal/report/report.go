@@ -1,3 +1,4 @@
+// Package report provides report saving and loading functionality.
 package report
 
 import (
@@ -7,6 +8,7 @@ import (
 	"time"
 )
 
+// Report holds the results of a face grouping processing run.
 type Report struct {
 	StartedAt    time.Time         `json:"started_at"`
 	FinishedAt   time.Time         `json:"finished_at"`
@@ -23,6 +25,7 @@ type Report struct {
 	Persons      []PersonReport    `json:"persons"`
 }
 
+// PersonReport holds per-person metadata within a report.
 type PersonReport struct {
 	ID           int      `json:"id"`
 	PhotoCount   int      `json:"photo_count"`
@@ -33,18 +36,20 @@ type PersonReport struct {
 	Photos       []string `json:"photos"`
 }
 
+// Save writes the report as JSON to the output directory.
 func Save(r *Report, outputDir string) error {
 	path := filepath.Join(outputDir, "report.json")
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600) //nolint:gosec
 }
 
+// Load reads and returns the report from the output directory.
 func Load(outputDir string) (*Report, error) {
 	path := filepath.Join(outputDir, "report.json")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}

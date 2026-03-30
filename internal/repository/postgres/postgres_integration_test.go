@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	testDB      *database.DB
-	testPool    *pgxpool.Pool
-	ctx         context.Context
-	cancel      context.CancelFunc
+	testDB   *database.DB
+	testPool *pgxpool.Pool
+	ctx      context.Context
+	cancel   context.CancelFunc
 )
 
 // TestMain runs setup before all tests and teardown after.
@@ -60,14 +60,14 @@ func TestMain(m *testing.M) {
 // setupTestDatabase creates a test database connection.
 func setupTestDatabase() (*pgxpool.Pool, error) {
 	cfg := env.DatabaseConfig{
-		Host:         getEnv("TEST_DB_HOST", "localhost"),
-		Port:         getIntEnv("TEST_DB_PORT", 5432),
-		Database:     getEnv("TEST_DB_NAME", "face-grouper-test"),
-		User:         getEnv("TEST_DB_USER", "face-grouper"),
-		Password:     getEnv("TEST_DB_PASSWORD", "secret"),
-		SSLMode:      "disable",
-		MaxConns:     5,
-		MinConns:     1,
+		Host:          getEnv("TEST_DB_HOST", "localhost"),
+		Port:          getIntEnv("TEST_DB_PORT", 5432),
+		Database:      getEnv("TEST_DB_NAME", "face-grouper-test"),
+		User:          getEnv("TEST_DB_USER", "face-grouper"),
+		Password:      getEnv("TEST_DB_PASSWORD", "secret"),
+		SSLMode:       "disable",
+		MaxConns:      5,
+		MinConns:      1,
 		RunMigrations: true,
 	}
 
@@ -104,9 +104,9 @@ func TestPersonRepository_CreateAndGet(t *testing.T) {
 
 	// Create person
 	person := &model.Person{
-		Name:        "Test Person",
-		FaceCount:   5,
-		PhotoCount:  3,
+		Name:         "Test Person",
+		FaceCount:    5,
+		PhotoCount:   3,
 		QualityScore: 0.85,
 	}
 
@@ -265,12 +265,12 @@ func TestSessionRepository_CreateAndUpdate(t *testing.T) {
 	require := require.New(t)
 
 	session := &model.ProcessingSession{
-		Status:       "processing",
-		Stage:        "extraction",
-		Progress:     0.0,
-		TotalItems:   100,
+		Status:         "processing",
+		Stage:          "extraction",
+		Progress:       0.0,
+		TotalItems:     100,
 		ProcessedItems: 0,
-		Errors:       0,
+		Errors:         0,
 	}
 
 	err := testDB.Sessions.Create(ctx, session)

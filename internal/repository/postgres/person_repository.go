@@ -43,10 +43,10 @@ func (r *PersonRepository) Create(ctx context.Context, person *model.Person) err
 	_, err = r.pool.Exec(ctx, query,
 		person.ID,
 		person.Name,
-		nullStringToSql(person.CustomName),
-		nullStringToSql(person.AvatarPath),
-		nullStringToSql(person.AvatarThumbnailPath),
-		nullFloat32ToSql(person.QualityScore),
+		nullStringToSQL(person.CustomName),
+		nullStringToSQL(person.AvatarPath),
+		nullStringToSQL(person.AvatarThumbnailPath),
+		nullFloat32ToSQL(person.QualityScore),
 		person.FaceCount,
 		person.PhotoCount,
 		metadataJSON,
@@ -140,6 +140,8 @@ func (r *PersonRepository) GetByName(ctx context.Context, name string) (*model.P
 }
 
 // List retrieves a list of persons with pagination.
+//
+//nolint:dupl
 func (r *PersonRepository) List(ctx context.Context, offset, limit int) ([]*model.Person, error) {
 	query := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
@@ -205,10 +207,10 @@ func (r *PersonRepository) Update(ctx context.Context, person *model.Person) err
 	_, err = r.pool.Exec(ctx, query,
 		person.ID,
 		person.Name,
-		nullStringToSql(person.CustomName),
-		nullStringToSql(person.AvatarPath),
-		nullStringToSql(person.AvatarThumbnailPath),
-		nullFloat32ToSql(person.QualityScore),
+		nullStringToSQL(person.CustomName),
+		nullStringToSQL(person.AvatarPath),
+		nullStringToSQL(person.AvatarThumbnailPath),
+		nullFloat32ToSQL(person.QualityScore),
 		person.FaceCount,
 		person.PhotoCount,
 		metadataJSON,
@@ -234,6 +236,8 @@ func (r *PersonRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // Search searches for persons by name using full-text search.
+//
+//nolint:dupl
 func (r *PersonRepository) Search(ctx context.Context, query string, limit int) ([]*model.Person, error) {
 	sqlQuery := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
@@ -283,9 +287,11 @@ func (r *PersonRepository) Search(ctx context.Context, query string, limit int) 
 }
 
 // FindSimilarFaces finds faces similar to the given embedding with threshold filtering.
+//
+//nolint:dupl
 func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []float32, limit int) ([]*model.SimilarFace, error) {
-	// Use threshold filtering for efficient search
-	// Convert similarity threshold to distance: similarity > 0.5 => distance < 0.5
+	// Use threshold filtering for efficient search.
+	// Convert similarity threshold to distance: similarity > 0.5 => distance < 0.5.
 	minSimilarity := 0.5
 	maxDistance := 1.0 - minSimilarity
 
@@ -347,13 +353,15 @@ func (r *PersonRepository) FindSimilarFaces(ctx context.Context, embedding []flo
 }
 
 // FindSimilarFacesWithThreshold finds faces similar to the given embedding with custom threshold.
+//
+//nolint:dupl
 func (r *PersonRepository) FindSimilarFacesWithThreshold(
 	ctx context.Context,
 	embedding []float32,
 	threshold float64,
 	limit int,
 ) ([]*model.SimilarFace, error) {
-	// Convert similarity threshold to distance: similarity > threshold => distance < 1-threshold
+	// Convert similarity threshold to distance: similarity > threshold => distance < 1-threshold.
 	maxDistance := 1.0 - threshold
 
 	query := `
@@ -427,14 +435,14 @@ func (r *PersonRepository) Count(ctx context.Context) (int, error) {
 }
 
 // Helper functions.
-func nullStringToSql(s string) sql.NullString {
+func nullStringToSQL(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{Valid: false}
 	}
 	return sql.NullString{String: s, Valid: true}
 }
 
-func nullFloat32ToSql(f float32) sql.NullFloat64 {
+func nullFloat32ToSQL(f float32) sql.NullFloat64 {
 	if f == 0 {
 		return sql.NullFloat64{Valid: false}
 	}

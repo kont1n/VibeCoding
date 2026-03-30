@@ -1,3 +1,4 @@
+// Package organizer creates per-person directories and manages face thumbnails.
 package organizer
 
 import (
@@ -55,16 +56,16 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 		for _, e := range entries {
 			name := e.Name()
 			if (e.IsDir() && strings.HasPrefix(name, "Person_")) || name == "report.json" {
-				os.RemoveAll(filepath.Join(outputDir, name))
+				_ = os.RemoveAll(filepath.Join(outputDir, name))
 			}
 		}
 	}
 
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create output dir: %w", err)
 	}
 	avatarsDir := filepath.Join(outputDir, "avatars")
-	if err := os.MkdirAll(avatarsDir, 0o755); err != nil {
+	if err := os.MkdirAll(avatarsDir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create avatars dir: %w", err)
 	}
 
@@ -77,7 +78,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 	for i, cluster := range clusters {
 		personName := fmt.Sprintf("Person_%d", i+1)
 		personDir := filepath.Join(outputDir, personName)
-		if err := os.MkdirAll(personDir, 0o755); err != nil {
+		if err := os.MkdirAll(personDir, 0o750); err != nil {
 			return nil, fmt.Errorf("failed to create %s: %w", personDir, err)
 		}
 
@@ -93,7 +94,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 				fileName := uniquePhotoName(face.FilePath, usedFileNames)
 				dstPath := filepath.Join(personDir, fileName)
 				if err := linkOrCopy(face.FilePath, dstPath); err != nil {
-					fmt.Fprintf(w, "WARNING: %s: %v\n", dstPath, err)
+					_, _ = fmt.Fprintf(w, "WARNING: %s: %v\n", dstPath, err)
 				}
 				photos = append(photos, personName+"/"+fileName)
 			}
@@ -111,7 +112,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 		if bestThumb != "" {
 			thumbDst := filepath.Join(personDir, "thumb.jpg")
 			if err := copyFile(bestThumb, thumbDst); err != nil {
-				fmt.Fprintf(w, "WARNING: thumbnail copy for %s: %v\n", personName, err)
+				_, _ = fmt.Fprintf(w, "WARNING: thumbnail copy for %s: %v\n", personName, err)
 			} else {
 				thumbRel = personName + "/thumb.jpg"
 			}
@@ -142,7 +143,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 				avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d.jpg", personID)))
 				avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
 				if err := copyFile(bestThumb, avatarAbs); err != nil {
-					fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
+					_, _ = fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
 				} else {
 					avatarScore = bestScore
 				}
@@ -166,7 +167,7 @@ func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold 
 			Photos:       photos,
 		})
 
-		fmt.Fprintf(w, "Person_%d: %d unique photo(s)\n", personID, len(seen))
+		_, _ = fmt.Fprintf(w, "Person_%d: %d unique photo(s)\n", personID, len(seen))
 	}
 
 	return persons, nil
@@ -176,11 +177,11 @@ func scoreFace(face model.Face) float64 {
 	if face.Thumbnail == "" {
 		return 0
 	}
-	f, err := os.Open(face.Thumbnail)
+	f, err := os.Open(face.Thumbnail) //nolint:gosec
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	img, _, err := image.Decode(f)
 	if err != nil {
@@ -218,25 +219,22 @@ func linkOrCopy(src, dst string) error {
 }
 
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(src) //nolint:gosec
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return nil
+	return out.Close()
 }
 
 func uniquePhotoName(srcPath string, used map[string]bool) string {

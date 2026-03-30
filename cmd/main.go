@@ -1,3 +1,4 @@
+// Package main is the entrypoint for the face-grouper application.
 package main
 
 import (
@@ -20,9 +21,9 @@ import (
 const configPath = ".env"
 
 const (
-	shutdownTimeout     = 30 * time.Second
-	loggerSyncTimeout   = 5 * time.Second
-	gracefulLogTimeout  = 10 * time.Second
+	shutdownTimeout    = 30 * time.Second
+	loggerSyncTimeout  = 5 * time.Second
+	gracefulLogTimeout = 10 * time.Second
 )
 
 func main() {

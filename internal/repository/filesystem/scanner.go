@@ -1,3 +1,4 @@
+// Package filesystem provides file system repository implementations.
 package filesystem
 
 import (

@@ -1,3 +1,4 @@
+// Package config provides application configuration loading and management.
 package config
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/kont1n/face-grouper/internal/config/env"
 )
 
+// AppConfig is the global application configuration instance.
 var AppConfig *Config
 
 // Config хранит конфигурацию приложения.

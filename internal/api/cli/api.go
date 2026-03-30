@@ -1,3 +1,4 @@
+// Package cli provides the command-line API for face processing operations.
 package cli
 
 import (

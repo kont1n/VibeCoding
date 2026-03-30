@@ -39,8 +39,8 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 
 	_, err := r.pool.Exec(ctx, query,
 		face.ID,
-		uuidFromSql(face.PersonID),
-		uuidFromSql(face.PhotoID),
+		uuidFromSQL(face.PersonID),
+		uuidFromSQL(face.PhotoID),
 		embedding,
 		face.BBox.X1,
 		face.BBox.Y1,
@@ -48,7 +48,7 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 		face.BBox.Y2,
 		face.DetScore,
 		face.QualityScore,
-		nullStringToSql(face.ThumbnailPath),
+		nullStringToSQL(face.ThumbnailPath),
 	)
 
 	return err
@@ -98,6 +98,8 @@ func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face
 }
 
 // GetByPersonID retrieves all faces for a person.
+//
+//nolint:dupl
 func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
@@ -146,6 +148,8 @@ func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) 
 }
 
 // GetByPhotoID retrieves all faces from a photo.
+//
+//nolint:dupl
 func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
@@ -230,7 +234,7 @@ func float32SliceToFloat64Slice(in []float32) []float64 {
 	return out
 }
 
-func uuidFromSql(id any) uuid.UUID {
+func uuidFromSQL(id any) uuid.UUID {
 	if uid, ok := id.(uuid.UUID); ok {
 		return uid
 	}

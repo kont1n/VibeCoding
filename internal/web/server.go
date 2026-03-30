@@ -1,3 +1,4 @@
+// Package web provides the HTTP server and static file serving for the web UI.
 package web
 
 import (
@@ -31,14 +32,14 @@ type Server struct {
 	mux     *http.ServeMux
 	handler http.Handler
 
-	// Handlers
+	// Handlers.
 	uploadHandler  *handler.UploadHandler
 	sessionHandler *handler.SessionHandler
 	personHandler  *handler.PersonHandler
 	errorHandler   *handler.ErrorHandler
 	healthHandler  *handler.HealthHandler
 
-	// Pipeline runner for async processing
+	// Pipeline runner for async processing.
 	pipelineRunner handler.PipelineRunner
 }
 
@@ -69,35 +70,35 @@ func (s *Server) initHandlers() {
 		uploadDir = filepath.Join(s.cfg.OutputDir, ".uploads")
 	}
 
-	s.uploadHandler = handler.NewUploadHandler(uploadDir, 500<<20) // 500MB max
+	s.uploadHandler = handler.NewUploadHandler(uploadDir, 500<<20) // 500MB max.
 	s.sessionHandler = handler.NewSessionHandler(s.pipelineRunner)
 	s.personHandler = handler.NewPersonHandler(s.cfg.OutputDir, s.cfg.DB)
 	s.errorHandler = handler.NewErrorHandler(s.cfg.OutputDir, s.cfg.DB)
 }
 
 func (s *Server) registerRoutes() {
-	// Static: SPA frontend
+	// Static: SPA frontend.
 	s.mux.HandleFunc("GET /", s.serveIndex)
 	s.mux.HandleFunc("GET /api/report", s.serveReport)
 
-	// File serving
+	// File serving.
 	fs := http.FileServer(http.Dir(s.cfg.OutputDir))
 	s.mux.Handle("GET /output/", http.StripPrefix("/output/", fs))
 
-	// Health
+	// Health.
 	s.mux.HandleFunc("GET /health", s.healthHandler.HealthCheck)
 	s.mux.HandleFunc("GET /ready", s.healthHandler.ReadyCheck)
 
-	// Upload API
+	// Upload API.
 	s.mux.HandleFunc("POST /api/v1/upload", s.uploadHandler.Upload)
 
-	// Session / Processing API
+	// Session / Processing API.
 	s.mux.HandleFunc("POST /api/v1/sessions/{id}/process", s.sessionHandler.StartProcessing)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/status", s.sessionHandler.GetStatus)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/stream", s.sessionHandler.StreamProgress)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/errors", s.errorHandler.GetSessionErrors)
 
-	// Persons API
+	// Persons API.
 	s.mux.HandleFunc("GET /api/v1/persons", s.personHandler.List)
 	s.mux.HandleFunc("GET /api/v1/persons/{id}", s.personHandler.Get)
 	s.mux.HandleFunc("PUT /api/v1/persons/{id}", s.personHandler.Rename)
@@ -106,7 +107,7 @@ func (s *Server) registerRoutes() {
 }
 
 func (s *Server) applyMiddleware() {
-	// Build middleware chain: Recovery → RateLimit → MaxBody → CORS → Handler
+	// Build middleware chain: Recovery → RateLimit → MaxBody → CORS → Handler.
 	rateLimiter := middleware.NewRateLimiter(100, 200)
 	stopCh := make(chan struct{})
 
@@ -128,18 +129,18 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(indexHTML)
+	_, _ = w.Write(indexHTML)
 }
 
 func (s *Server) serveReport(w http.ResponseWriter, r *http.Request) {
 	reportPath := filepath.Join(s.cfg.OutputDir, "report.json")
-	data, err := os.ReadFile(reportPath)
+	data, err := os.ReadFile(reportPath) //nolint:gosec
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "report not found"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // ListenAndServe starts the HTTP server with graceful shutdown.
@@ -149,7 +150,7 @@ func (s *Server) ListenAndServe() error {
 		Addr:         addr,
 		Handler:      s.handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second, // SSE needs longer write timeout
+		WriteTimeout: 120 * time.Second, // SSE needs longer write timeout.
 		IdleTimeout:  120 * time.Second,
 	}
 
@@ -184,8 +185,8 @@ func (s *Server) ListenAndServe() error {
 	return nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }

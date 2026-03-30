@@ -82,7 +82,7 @@ func TestIsAllowedImageExt(t *testing.T) {
 		{".bmp", true},
 		{".tiff", true},
 		{".tif", true},
-		{".JPG", false}, // case sensitive
+		{".JPG", false}, // case sensitive.
 		{".txt", false},
 		{".exe", false},
 		{".sh", false},

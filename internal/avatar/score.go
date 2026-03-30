@@ -1,3 +1,4 @@
+// Package avatar provides face scoring and avatar selection utilities.
 package avatar
 
 import (

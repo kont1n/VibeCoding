@@ -1,3 +1,4 @@
+// Package env provides environment-based configuration loading.
 package env
 
 import (

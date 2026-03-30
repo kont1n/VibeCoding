@@ -31,7 +31,7 @@ func ExtractZip(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open archive: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Resolve destination directory to absolute path.
 	destDir, err = filepath.Abs(destDir)
@@ -121,13 +121,13 @@ func extractFileContent(f *zip.File, target string) error {
 	if err != nil {
 		return fmt.Errorf("open file in archive: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	outFile, err := os.Create(target)
 	if err != nil {
 		return fmt.Errorf("create file %s: %w", target, err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Limit the amount of data read to prevent decompression bombs.
 	limitedReader := io.LimitReader(rc, MaxArchiveFileSize+1)
@@ -137,7 +137,7 @@ func extractFileContent(f *zip.File, target string) error {
 	}
 
 	if written > MaxArchiveFileSize {
-		os.Remove(target)
+		_ = os.Remove(target)
 		return fmt.Errorf("file too large after extraction: %s", f.Name)
 	}
 

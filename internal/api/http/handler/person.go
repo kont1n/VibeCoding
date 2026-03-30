@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+
 	"github.com/kont1n/face-grouper/internal/database"
 	"github.com/kont1n/face-grouper/internal/report"
 )
@@ -42,7 +43,7 @@ func (h *PersonHandler) List(w http.ResponseWriter, r *http.Request) {
 
 		count, _ := h.db.Persons.Count(r.Context())
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"persons": persons,
 			"total":   count,
 			"offset":  offset,
@@ -58,7 +59,7 @@ func (h *PersonHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"persons": rpt.Persons,
 		"total":   len(rpt.Persons),
 	})
@@ -193,7 +194,7 @@ func (h *PersonHandler) Photos(w http.ResponseWriter, r *http.Request) {
 
 		count, _ := h.db.Photos.CountByPerson(r.Context(), id)
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"photos": photos,
 			"total":  count,
 			"offset": offset,
@@ -217,7 +218,7 @@ func (h *PersonHandler) Photos(w http.ResponseWriter, r *http.Request) {
 
 	for _, p := range rpt.Persons {
 		if p.ID == personID {
-			writeJSON(w, http.StatusOK, map[string]interface{}{
+			writeJSON(w, http.StatusOK, map[string]any{
 				"photos": p.Photos,
 				"total":  len(p.Photos),
 			})
@@ -274,7 +275,7 @@ func (h *PersonHandler) Relations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"person_id": id,
 		"relations": relations,
 		"nodes":     nodes,

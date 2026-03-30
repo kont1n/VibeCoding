@@ -1,3 +1,4 @@
+// Package clustering implements face embedding clustering algorithms.
 package clustering
 
 import (
@@ -97,7 +98,7 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 				iEnd = n
 			}
 			rows := iEnd - iStart
-			blockI := E.Slice(iStart, iEnd, 0, dim).(*mat.Dense)
+			blockI := E.Slice(iStart, iEnd, 0, dim).(*mat.Dense) //nolint:forcetypeassert,errcheck
 
 			for jStart := iStart; jStart < n; jStart += blockSize {
 				jEnd := jStart + blockSize
@@ -105,7 +106,7 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 					jEnd = n
 				}
 				cols := jEnd - jStart
-				blockJ := E.Slice(jStart, jEnd, 0, dim).(*mat.Dense)
+				blockJ := E.Slice(jStart, jEnd, 0, dim).(*mat.Dense) //nolint:forcetypeassert,errcheck
 
 				sim := mat.NewDense(rows, cols, nil)
 				sim.Mul(blockI, blockJ.T())

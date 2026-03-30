@@ -139,14 +139,14 @@ type ErrorResponse struct {
 func WriteError(w http.ResponseWriter, statusCode int, err string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: err})
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err})
 }
 
 // WriteErrorWithCode writes an error response with error code.
-func WriteErrorWithCode(w http.ResponseWriter, statusCode int, err string, code string, message string) {
+func WriteErrorWithCode(w http.ResponseWriter, statusCode int, err, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
 		Error:   err,
 		Code:    code,
 		Message: message,

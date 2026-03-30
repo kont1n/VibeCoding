@@ -8,13 +8,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/report"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
 	"github.com/kont1n/face-grouper/internal/service/organization"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
-	"go.uber.org/zap"
 )
 
 // Pipeline implements handler.PipelineRunner for async processing.
@@ -28,7 +29,7 @@ func NewPipeline(di *diContainer) *Pipeline {
 }
 
 // RunPipeline starts the face processing pipeline asynchronously.
-func (p *Pipeline) RunPipeline(ctx context.Context, sessionID string, inputDir string) (<-chan handler.ProgressEvent, error) {
+func (p *Pipeline) RunPipeline(ctx context.Context, sessionID, inputDir string) (<-chan handler.ProgressEvent, error) {
 	ch := make(chan handler.ProgressEvent, 100)
 
 	go func() {
@@ -39,7 +40,7 @@ func (p *Pipeline) RunPipeline(ctx context.Context, sessionID string, inputDir s
 	return ch, nil
 }
 
-func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, ch chan<- handler.ProgressEvent) {
+func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<- handler.ProgressEvent) {
 	start := time.Now()
 	appCfg := config.AppConfig
 	outputDir := appCfg.App.OutputDir
@@ -74,23 +75,23 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 	}
 
 	// Create output dirs.
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		fail(fmt.Sprintf("cannot create output dir: %v", err))
 		return
 	}
 
-	logFile, err := os.Create(filepath.Join(outputDir, "processing.log"))
+	logFile, err := os.Create(filepath.Join(outputDir, "processing.log")) //nolint:gosec
 	if err != nil {
 		fail(fmt.Sprintf("cannot create log file: %v", err))
 		return
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 	w := io.MultiWriter(os.Stdout, logFile)
 
 	api := p.di.API(ctx)
 	stageDurations := make(map[string]time.Duration)
 
-	// --- Scan ---
+	// --- Scan. ---
 	send("scan", "Сканирование...", 0.05)
 	stageStart := time.Now()
 	files, err := api.Scan(ctx, inputDir)
@@ -98,7 +99,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 		fail(fmt.Sprintf("scan error: %v", err))
 		return
 	}
-	fmt.Fprintf(w, "Found %d image(s)\n", len(files))
+	_, _ = fmt.Fprintf(w, "Found %d image(s)\n", len(files))
 	stageDurations["scan"] = time.Since(stageStart)
 	send("scan", "Сканирование...", 1.0)
 
@@ -107,11 +108,11 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 		return
 	}
 
-	// --- Thumbnails ---
-	os.RemoveAll(thumbDir)
-	os.MkdirAll(thumbDir, 0o755)
+	// --- Thumbnails. ---
+	_ = os.RemoveAll(thumbDir)
+	_ = os.MkdirAll(thumbDir, 0o750)
 
-	// --- Extract ---
+	// --- Extract. ---
 	send("extract", "Обнаружение лиц...", 0.05)
 	stageStart = time.Now()
 
@@ -120,7 +121,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 		fail(fmt.Sprintf("extraction error: %v", err))
 		return
 	}
-	fmt.Fprintf(w, "Total faces: %d, errors: %d\n", len(extractResult.Faces), extractResult.ErrorCount)
+	_, _ = fmt.Fprintf(w, "Total faces: %d, errors: %d\n", len(extractResult.Faces), extractResult.ErrorCount)
 	stageDurations["extract"] = time.Since(stageStart)
 	send("extract", "Обнаружение лиц...", 1.0)
 
@@ -129,7 +130,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 		return
 	}
 
-	// --- Cluster ---
+	// --- Cluster. ---
 	send("cluster", "Группировка...", 0.05)
 	stageStart = time.Now()
 
@@ -138,11 +139,11 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 		fail(fmt.Sprintf("clustering error: %v", err))
 		return
 	}
-	fmt.Fprintf(w, "Found %d person(s)\n", len(clusters))
+	_, _ = fmt.Fprintf(w, "Found %d person(s)\n", len(clusters))
 	stageDurations["cluster"] = time.Since(stageStart)
 	send("cluster", "Группировка...", 1.0)
 
-	// --- Organize ---
+	// --- Organize. ---
 	send("organize", "Организация результатов...", 0.05)
 	stageStart = time.Now()
 
@@ -154,8 +155,8 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 	stageDurations["organize"] = time.Since(stageStart)
 	send("organize", "Организация результатов...", 1.0)
 
-	// --- Report ---
-	rpt := buildReport(start, appCfg, len(files), extractResult, persons, stageDurations)
+	// --- Report. ---
+	rpt := buildReport(start, appCfg, len(files), extractResult, persons)
 	if err := report.Save(rpt, outputDir); err != nil {
 		logger.Warn(ctx, "cannot save report", zap.Error(err))
 	}
@@ -163,7 +164,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID string, inputDir string, c
 	finish()
 }
 
-func buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo, stageDurations map[string]time.Duration) *report.Report {
+func buildReport(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
 	rpt := &report.Report{
 		StartedAt:    start,
 		InputDir:     cfg.App.InputDir,
