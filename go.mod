@@ -1,6 +1,6 @@
 module github.com/kont1n/face-grouper
 
-go 1.25.6
+go 1.24
 
 require (
 	github.com/bufbuild/buf v1.66.1
