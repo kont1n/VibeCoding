@@ -30,7 +30,7 @@ RUN go mod download
 COPY . .
 
 # Download ONNX Runtime ROCm library
-ARG ONNXRUNTIME_VERSION=1.23.0
+ARG ONNXRUNTIME_VERSION=1.18.0
 RUN curl -L -o /tmp/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz \
     https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz \
     && tar -xzf /tmp/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
@@ -65,7 +65,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /opt/onnxruntime /opt/onnxruntime
 
 # Set library path for ONNX Runtime and ROCm
-ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/opt/rocm/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/opt/rocm/lib
 
 # Copy the binary from builder
 COPY --from=builder /build/face-grouper .
