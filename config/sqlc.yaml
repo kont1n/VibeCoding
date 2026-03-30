@@ -2,11 +2,11 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "internal/query"
-    schema: "internal/database/postgres/schema.sql"
+    schema: "internal/infrastructure/database/postgres/schema.sql"
     gen:
       go:
         package: "db"
-        out: "internal/database/postgres/db"
+        out: "internal/infrastructure/database/postgres/db"
         sql_package: "pgx/v5"
         
         # Code generation options

@@ -100,7 +100,7 @@ CMD ["--serve"]
 # Usage:
 # -----------------------------------------------------------------------------
 # Build:
-#   docker build -t face-grouper:cpu -f Dockerfile .
+#   docker build -t face-grouper:cpu -f Dockerfile.cpu .
 #
 # Run (CPU):
 #   docker run -d --name face-grouper \

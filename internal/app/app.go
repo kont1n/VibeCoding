@@ -13,12 +13,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kont1n/face-grouper/internal/config"
-	"github.com/kont1n/face-grouper/internal/database"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
-	"github.com/kont1n/face-grouper/internal/report"
+	"github.com/kont1n/face-grouper/internal/repository/database"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
-	"github.com/kont1n/face-grouper/internal/service/organization"
+	"github.com/kont1n/face-grouper/internal/service/organizer"
+	"github.com/kont1n/face-grouper/internal/service/report"
 	"github.com/kont1n/face-grouper/internal/web"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
@@ -287,7 +287,7 @@ func (a *App) runProcess(ctx context.Context) error {
 }
 
 // buildReportFromResults creates a report from extraction and organization results.
-func buildReportFromResults(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organization.PersonInfo) *report.Report {
+func buildReportFromResults(start time.Time, cfg *config.Config, totalImages int, extractResult *extraction.ExtractionResult, persons []organizer.PersonInfo) *report.Report {
 	reportPersons := make([]report.PersonBuildInfo, len(persons))
 	for i, p := range persons {
 		reportPersons[i] = report.PersonBuildInfo{

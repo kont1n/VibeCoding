@@ -8,14 +8,14 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
-	"github.com/kont1n/face-grouper/internal/database"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
+	"github.com/kont1n/face-grouper/internal/repository/database"
 	"github.com/kont1n/face-grouper/internal/repository/filesystem"
 	"github.com/kont1n/face-grouper/internal/repository/postgres"
 	"github.com/kont1n/face-grouper/internal/service/clustering"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
-	"github.com/kont1n/face-grouper/internal/service/organization"
+	"github.com/kont1n/face-grouper/internal/service/organizer"
 	"github.com/kont1n/face-grouper/internal/service/scan"
 	"github.com/kont1n/face-grouper/platform/pkg/closer"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
@@ -32,7 +32,7 @@ type DiContainer struct {
 	scanService       scan.ScanService
 	extractionService extraction.ExtractionService
 	clusterService    clustering.ClusterService
-	organizeService   organization.OrganizeService
+	organizeService   *organizer.Organizer
 
 	scannerRepo    filesystem.ScannerRepository
 	detectorPool   []ml.DetectorRepository
@@ -111,15 +111,15 @@ func (d *DiContainer) clusterServiceLocked(_ context.Context) clustering.Cluster
 }
 
 // OrganizeService возвращает сервис организации.
-func (d *DiContainer) OrganizeService(ctx context.Context) organization.OrganizeService {
+func (d *DiContainer) OrganizeService(ctx context.Context) *organizer.Organizer {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.organizeServiceLocked(ctx)
 }
 
-func (d *DiContainer) organizeServiceLocked(_ context.Context) organization.OrganizeService {
+func (d *DiContainer) organizeServiceLocked(_ context.Context) *organizer.Organizer {
 	if d.organizeService == nil {
-		d.organizeService = organization.NewOrganizeService()
+		d.organizeService = organizer.NewOrganizer()
 	}
 	return d.organizeService
 }

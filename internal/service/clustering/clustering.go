@@ -2,6 +2,7 @@
 package clustering
 
 import (
+	"context"
 	"math"
 	"sync"
 
@@ -9,6 +10,23 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/model"
 )
+
+// ClusterService defines the interface for clustering operations.
+type ClusterService interface {
+	Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error)
+}
+
+type clusterService struct{}
+
+// NewClusterService creates a new ClusterService.
+func NewClusterService() ClusterService {
+	return &clusterService{}
+}
+
+// Cluster groups faces using cosine similarity.
+func (s *clusterService) Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error) {
+	return Cluster(faces, threshold), nil
+}
 
 type unionFind struct {
 	parent []int

@@ -13,7 +13,7 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/api/http/middleware"
-	"github.com/kont1n/face-grouper/internal/database"
+	"github.com/kont1n/face-grouper/internal/repository/database"
 )
 
 // ServerConfig holds configuration for the HTTP server.
@@ -99,6 +99,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/v1/sessions/{id}/process", s.sessionHandler.StartProcessing)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/status", s.sessionHandler.GetStatus)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/stream", s.sessionHandler.StreamProgress)
+	s.mux.HandleFunc("POST /api/v1/sessions/{id}/cancel", s.sessionHandler.CancelProcessing)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/errors", s.errorHandler.GetSessionErrors)
 
 	// Persons API.
@@ -154,7 +155,7 @@ func (s *Server) ListenAndServe() error {
 	return s.ListenAndServeContext(context.Background())
 }
 
-// ListenAndServeContext starts the HTTP server and shuts it down when ctx is cancelled.
+// ListenAndServeContext starts the HTTP server and shuts it down when ctx is canceled.
 func (s *Server) ListenAndServeContext(ctx context.Context) error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 	srv := &http.Server{
@@ -177,7 +178,7 @@ func (s *Server) ListenAndServeContext(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		log.Printf("Context cancelled, shutting down...")
+		log.Printf("Context canceled, shutting down...")
 	case err := <-errCh:
 		return err
 	}
@@ -185,7 +186,7 @@ func (s *Server) ListenAndServeContext(ctx context.Context) error {
 	// Stop background goroutines (e.g. rate limiter cleanup).
 	close(s.stopCh)
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

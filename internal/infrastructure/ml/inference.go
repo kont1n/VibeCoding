@@ -3,7 +3,7 @@ package ml
 import (
 	"fmt"
 
-	"github.com/kont1n/face-grouper/internal/imageutil"
+	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
 // DetectorRepository определяет интерфейс для детекции лиц.

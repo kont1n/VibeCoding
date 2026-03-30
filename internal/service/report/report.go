@@ -77,15 +77,7 @@ func Build(params BuildParams) *Report {
 	}
 
 	for _, p := range params.Persons {
-		rpt.Persons = append(rpt.Persons, PersonReport{
-			ID:           p.ID,
-			PhotoCount:   p.PhotoCount,
-			FaceCount:    p.FaceCount,
-			Thumbnail:    p.Thumbnail,
-			AvatarPath:   p.AvatarPath,
-			QualityScore: p.QualityScore,
-			Photos:       p.Photos,
-		})
+		rpt.Persons = append(rpt.Persons, PersonReport(p))
 	}
 
 	rpt.FinishedAt = time.Now()

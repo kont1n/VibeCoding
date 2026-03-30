@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
 // Allowed image extensions.
@@ -19,6 +21,14 @@ var allowedExtensions = map[string]bool{
 	".jpg":  true,
 	".jpeg": true,
 	".png":  true,
+	".webp": true,
+}
+
+// Allowed MIME types.
+var allowedMimeTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
 }
 
 // UploadHandler handles file upload requests.
@@ -105,11 +115,35 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Validate MIME type from Content-Type header.
+		contentType := fileHeader.Header.Get("Content-Type")
+		if contentType != "" && !allowedMimeTypes[contentType] {
+			_ = src.Close()
+			continue // Skip unsupported MIME types.
+		}
+
 		dstPath := filepath.Join(sessionDir, fileHeader.Filename)
 		// Prevent path traversal.
 		if !strings.HasPrefix(filepath.Clean(dstPath), filepath.Clean(sessionDir)) {
 			_ = src.Close()
 			continue
+		}
+
+		// Validate image header (magic bytes).
+		header := make([]byte, 512)
+		n, _ := src.Read(header)
+		if !imageutil.ValidateImageHeader(header[:n]) {
+			_ = src.Close()
+			continue // Skip invalid images.
+		}
+
+		// Seek back to beginning after reading header.
+		if seeker, ok := src.(io.Seeker); ok {
+			_, _ = seeker.Seek(0, io.SeekStart)
+		} else {
+			// If not seekable, close and reopen.
+			_ = src.Close()
+			src, _ = fileHeader.Open()
 		}
 
 		dst, err := os.Create(dstPath) //nolint:gosec
@@ -206,6 +240,18 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 			continue
 		}
 
+		// Validate image header before extracting.
+		header := make([]byte, 512)
+		n, _ := rc.Read(header)
+		if !imageutil.ValidateImageHeader(header[:n]) {
+			_ = rc.Close()
+			continue // Skip invalid images silently.
+		}
+
+		// Reset to beginning.
+		_ = rc.Close()
+		rc, _ = f.Open()
+
 		dst, createErr := os.Create(destPath) //nolint:gosec
 		if createErr != nil {
 			_ = rc.Close()
@@ -213,7 +259,7 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 		}
 
 		// Limit copy to prevent zip bomb.
-		n, copyErr := io.Copy(dst, io.LimitReader(rc, maxExtractedSize-totalSize))
+		copied, copyErr := io.Copy(dst, io.LimitReader(rc, maxExtractedSize-totalSize))
 		_ = rc.Close()
 		_ = dst.Close()
 
@@ -223,7 +269,7 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 		}
 
 		files = append(files, filepath.Base(f.Name))
-		totalSize += n
+		totalSize += copied
 	}
 
 	return files, totalSize, nil

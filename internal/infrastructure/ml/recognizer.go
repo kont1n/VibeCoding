@@ -6,7 +6,7 @@ import (
 
 	ort "github.com/yalue/onnxruntime_go"
 
-	"github.com/kont1n/face-grouper/internal/imageutil"
+	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
 // Recognizer wraps an ArcFace ONNX model for face embedding extraction.

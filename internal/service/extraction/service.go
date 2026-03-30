@@ -16,9 +16,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/kont1n/face-grouper/internal/config/env"
-	"github.com/kont1n/face-grouper/internal/imageutil"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/model"
+	"github.com/kont1n/face-grouper/internal/service/imageutil"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
 
@@ -203,8 +203,8 @@ func (s *extractionService) processImage(
 	}
 
 	// Check for cancellation before detection.
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 
 	// Детекция.

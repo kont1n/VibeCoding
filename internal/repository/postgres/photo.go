@@ -1,0 +1,339 @@
+// Package postgres provides PostgreSQL repository implementations.
+package postgres
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/kont1n/face-grouper/internal/model"
+)
+
+// PhotoRepository provides database operations for photos.
+type PhotoRepository struct {
+	pool *pgxpool.Pool
+}
+
+// NewPhotoRepository creates a new photo repository.
+func NewPhotoRepository(pool *pgxpool.Pool) *PhotoRepository {
+	return &PhotoRepository{pool: pool}
+}
+
+// Create creates a new photo.
+func (r *PhotoRepository) Create(ctx context.Context, photo *model.Photo) error {
+	query := `
+		INSERT INTO photos (id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		photo.ID,
+		photo.Path,
+		photo.OriginalPath,
+		photo.Width,
+		photo.Height,
+		photo.FileSize,
+		photo.MimeType,
+		photo.Metadata,
+		photo.UploadedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("create photo: %w", err)
+	}
+
+	return nil
+}
+
+// CreateBatch creates multiple photos in a single transaction.
+func (r *PhotoRepository) CreateBatch(ctx context.Context, photos []*model.Photo) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	query := `
+		INSERT INTO photos (id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+
+	for _, photo := range photos {
+		_, err := tx.Exec(ctx, query,
+			photo.ID,
+			photo.Path,
+			photo.OriginalPath,
+			photo.Width,
+			photo.Height,
+			photo.FileSize,
+			photo.MimeType,
+			photo.Metadata,
+			photo.UploadedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("create photo: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// GetByID returns a photo by ID.
+func (r *PhotoRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Photo, error) {
+	query := `
+		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
+		FROM photos
+		WHERE id = $1
+	`
+
+	photo := &model.Photo{}
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&photo.ID,
+		&photo.Path,
+		&photo.OriginalPath,
+		&photo.Width,
+		&photo.Height,
+		&photo.FileSize,
+		&photo.MimeType,
+		&photo.Metadata,
+		&photo.UploadedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("get photo by id: %w", err)
+	}
+
+	return photo, nil
+}
+
+// GetByPath returns a photo by path.
+func (r *PhotoRepository) GetByPath(ctx context.Context, path string) (*model.Photo, error) {
+	query := `
+		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
+		FROM photos
+		WHERE path = $1
+	`
+
+	photo := &model.Photo{}
+	err := r.pool.QueryRow(ctx, query, path).Scan(
+		&photo.ID,
+		&photo.Path,
+		&photo.OriginalPath,
+		&photo.Width,
+		&photo.Height,
+		&photo.FileSize,
+		&photo.MimeType,
+		&photo.Metadata,
+		&photo.UploadedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("get photo by path: %w", err)
+	}
+
+	return photo, nil
+}
+
+// GetAll returns all photos.
+func (r *PhotoRepository) GetAll(ctx context.Context) ([]*model.Photo, error) {
+	query := `
+		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
+		FROM photos
+		ORDER BY uploaded_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("get all photos: %w", err)
+	}
+	defer rows.Close()
+
+	var photos []*model.Photo
+	for rows.Next() {
+		photo := &model.Photo{}
+		err := rows.Scan(
+			&photo.ID,
+			&photo.Path,
+			&photo.OriginalPath,
+			&photo.Width,
+			&photo.Height,
+			&photo.FileSize,
+			&photo.MimeType,
+			&photo.Metadata,
+			&photo.UploadedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan photo: %w", err)
+		}
+		photos = append(photos, photo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photos: %w", err)
+	}
+
+	return photos, nil
+}
+
+// GetByPersonID returns all photos for a person.
+func (r *PhotoRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Photo, error) {
+	query := `
+		SELECT DISTINCT p.id, p.path, p.original_path, p.width, p.height, p.file_size, p.mime_type, p.metadata, p.uploaded_at
+		FROM photos p
+		INNER JOIN faces f ON f.photo_id = p.id
+		WHERE f.person_id = $1
+		ORDER BY p.uploaded_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, personID)
+	if err != nil {
+		return nil, fmt.Errorf("get photos by person id: %w", err)
+	}
+	defer rows.Close()
+
+	var photos []*model.Photo
+	for rows.Next() {
+		photo := &model.Photo{}
+		err := rows.Scan(
+			&photo.ID,
+			&photo.Path,
+			&photo.OriginalPath,
+			&photo.Width,
+			&photo.Height,
+			&photo.FileSize,
+			&photo.MimeType,
+			&photo.Metadata,
+			&photo.UploadedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan photo: %w", err)
+		}
+		photos = append(photos, photo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photos: %w", err)
+	}
+
+	return photos, nil
+}
+
+// Update updates a photo.
+func (r *PhotoRepository) Update(ctx context.Context, photo *model.Photo) error {
+	query := `
+		UPDATE photos
+		SET path = $2, original_path = $3, width = $4, height = $5, file_size = $6,
+		    mime_type = $7, metadata = $8
+		WHERE id = $1
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		photo.ID,
+		photo.Path,
+		photo.OriginalPath,
+		photo.Width,
+		photo.Height,
+		photo.FileSize,
+		photo.MimeType,
+		photo.Metadata,
+	)
+
+	if err != nil {
+		return fmt.Errorf("update photo: %w", err)
+	}
+
+	return nil
+}
+
+// Delete deletes a photo.
+func (r *PhotoRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM photos WHERE id = $1`
+
+	_, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("delete photo: %w", err)
+	}
+
+	return nil
+}
+
+// Exists checks if a photo exists by path.
+func (r *PhotoRepository) Exists(ctx context.Context, path string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM photos WHERE path = $1)`
+
+	var exists bool
+	err := r.pool.QueryRow(ctx, query, path).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check photo exists: %w", err)
+	}
+
+	return exists, nil
+}
+
+// ListByPerson returns all photos for a person with pagination.
+func (r *PhotoRepository) ListByPerson(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.Photo, error) {
+	query := `
+		SELECT DISTINCT p.id, p.path, p.original_path, p.width, p.height, p.file_size, p.mime_type, p.metadata, p.uploaded_at
+		FROM photos p
+		INNER JOIN faces f ON f.photo_id = p.id
+		WHERE f.person_id = $1
+		ORDER BY p.uploaded_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.pool.Query(ctx, query, personID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list photos by person: %w", err)
+	}
+	defer rows.Close()
+
+	var photos []*model.Photo
+	for rows.Next() {
+		photo := &model.Photo{}
+		err := rows.Scan(
+			&photo.ID,
+			&photo.Path,
+			&photo.OriginalPath,
+			&photo.Width,
+			&photo.Height,
+			&photo.FileSize,
+			&photo.MimeType,
+			&photo.Metadata,
+			&photo.UploadedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan photo: %w", err)
+		}
+		photos = append(photos, photo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photos: %w", err)
+	}
+
+	return photos, nil
+}
+
+// CountByPerson returns the number of photos for a person.
+func (r *PhotoRepository) CountByPerson(ctx context.Context, personID uuid.UUID) (int, error) {
+	query := `
+		SELECT COUNT(DISTINCT p.id)
+		FROM photos p
+		INNER JOIN faces f ON f.photo_id = p.id
+		WHERE f.person_id = $1
+	`
+
+	var count int
+	err := r.pool.QueryRow(ctx, query, personID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count photos by person: %w", err)
+	}
+
+	return count, nil
+}

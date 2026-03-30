@@ -3,7 +3,7 @@ package ml
 import (
 	"math"
 
-	"github.com/kont1n/face-grouper/internal/imageutil"
+	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
 // Standard ArcFace destination landmarks for 112x112 image.

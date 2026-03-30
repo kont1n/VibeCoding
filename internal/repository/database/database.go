@@ -9,7 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kont1n/face-grouper/internal/config/env"
-	dbpostgres "github.com/kont1n/face-grouper/internal/database/postgres"
+	"github.com/kont1n/face-grouper/internal/infrastructure/database"
+	dbpostgres "github.com/kont1n/face-grouper/internal/infrastructure/database/postgres"
 	repopostgres "github.com/kont1n/face-grouper/internal/repository/postgres"
 )
 
@@ -30,7 +31,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 	// Create connection pool.
 	pool, err := dbpostgres.NewPool(ctx, dbpostgres.Config{
 		Host:              cfg.Host,
-		Port:              cfg.Port,
+		Port:              fmt.Sprintf("%d", cfg.Port),
 		Database:          cfg.Database,
 		User:              cfg.User,
 		Password:          cfg.Password,
@@ -47,7 +48,7 @@ func New(ctx context.Context, cfg env.DatabaseConfig) (*DB, error) {
 
 	// Run migrations if enabled.
 	if cfg.RunMigrations {
-		migrator := Migrator{pool: pool}
+		migrator := database.NewMigrator(pool)
 		if err := migrator.Migrate(ctx); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("run migrations: %w", err)

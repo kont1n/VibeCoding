@@ -192,6 +192,26 @@
   }
   .progress-percent { font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 0.3rem; }
 
+  .cancel-btn {
+    background: rgba(233, 69, 96, 0.15);
+    border: 1px solid rgba(233, 69, 96, 0.4);
+    color: var(--text);
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    margin-top: 1rem;
+  }
+  .cancel-btn:hover {
+    background: rgba(233, 69, 96, 0.25);
+    border-color: var(--accent);
+  }
+  .cancel-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .spinner {
     width: 40px; height: 40px;
     border: 3px solid rgba(255,255,255,0.1);
@@ -422,6 +442,7 @@
         <span id="proc-eta"></span>
       </div>
       <div class="spinner" id="proc-spinner"></div>
+      <button class="cancel-btn" id="btn-cancel">Отменить обработку</button>
     </div>
   </div>
 
@@ -595,6 +616,9 @@ document.getElementById('btn-start').addEventListener('click', async function() 
     processingStartTime = Date.now();
     navigate('processing');
     startSSE(sessionId);
+    
+    // Show cancel button.
+    document.getElementById('btn-cancel').style.display = 'block';
 
   } catch (e) {
     showError(e.message);
@@ -602,6 +626,35 @@ document.getElementById('btn-start').addEventListener('click', async function() 
     btn.textContent = 'Начать обработку';
   }
 });
+
+// Cancel button handler.
+document.getElementById('btn-cancel').addEventListener('click', async () => {
+  if (!sessionId) return;
+  
+  const btn = document.getElementById('btn-cancel');
+  btn.disabled = true;
+  btn.textContent = 'Отмена...';
+  
+  try {
+    const resp = await fetch('/api/v1/sessions/' + sessionId + '/cancel', { method: 'POST' });
+    if (resp.ok) {
+      showError('Обработка отменена');
+      setTimeout(() => navigate('upload'), 1500);
+    } else {
+      const err = await resp.json();
+      showError(err.error || 'Не удалось отменить');
+      btn.disabled = false;
+      btn.textContent = 'Отменить обработку';
+    }
+  } catch (e) {
+    showError('Ошибка отмены: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Отменить обработку';
+  }
+});
+
+// Hide cancel button initially.
+document.getElementById('btn-cancel').style.display = 'none';
 
 // ============================================================
 // PROCESSING PAGE (SSE)

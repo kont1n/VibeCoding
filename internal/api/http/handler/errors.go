@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/kont1n/face-grouper/internal/database"
-	"github.com/kont1n/face-grouper/internal/report"
+	"github.com/kont1n/face-grouper/internal/repository/database"
+	"github.com/kont1n/face-grouper/internal/service/report"
 )
 
 // ErrorHandler handles error-related API endpoints.

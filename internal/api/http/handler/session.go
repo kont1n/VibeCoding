@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-const statusFailed = "failed"
+const (
+	statusFailed    = "failed"
+	statusCompleted = "completed"
+)
 
 // PipelineRunner is the interface for running the face processing pipeline.
 type PipelineRunner interface {
@@ -33,13 +36,16 @@ type ProgressEvent struct {
 	Error          string  `json:"error,omitempty"`
 	Done           bool    `json:"done"`
 	ElapsedMs      int64   `json:"elapsed_ms"`
+	EstimatedMs    int64   `json:"estimated_ms,omitempty"` // Estimated total time in ms.
+	ETAMs          int64   `json:"eta_ms,omitempty"`       // Estimated time remaining in ms.
 }
 
 // SessionHandler handles processing session endpoints.
 type SessionHandler struct {
-	runner       PipelineRunner
-	sessions     sync.Map // sessionID -> sessionState.
-	allowedBase  string   // Base directory for input path validation.
+	runner      PipelineRunner
+	sessions    sync.Map // sessionID -> sessionState.
+	allowedBase string   // Base directory for input path validation.
+	cancelFuncs sync.Map // sessionID -> context.CancelFunc.
 }
 
 type sessionState struct {
@@ -110,13 +116,19 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	}
 	h.sessions.Store(sessionID, state)
 
+	// Create cancellable context for the pipeline.
+	pipelineCtx, cancel := context.WithCancel(r.Context())
+	h.cancelFuncs.Store(sessionID, cancel)
+
 	// Start pipeline asynchronously.
 	// Don't tie long-running pipeline to the HTTP request context.
 	// If the client drops/aborts the connection, r.Context() will be canceled
 	// and extraction will stop with "context canceled".
-	pipelineCtx := context.WithoutCancel(r.Context())
 	progressCh, err := h.runner.RunPipeline(pipelineCtx, sessionID, req.InputDir)
 	if err != nil {
+		h.cancelFuncs.Delete(sessionID)
+		cancel()
+
 		state.mu.Lock()
 		state.Status = statusFailed
 		state.Error = err.Error()
@@ -128,6 +140,8 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 
 	// Background goroutine to update session state from progress channel.
 	go func() {
+		defer h.cancelFuncs.Delete(sessionID)
+
 		for event := range progressCh {
 			state.mu.Lock()
 			state.Stage = event.Stage
@@ -137,7 +151,7 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 					state.Status = statusFailed
 					state.Error = event.Error
 				} else {
-					state.Status = "completed"
+					state.Status = statusCompleted
 				}
 			}
 			state.mu.Unlock()
@@ -222,7 +236,7 @@ func (h *SessionHandler) StreamProgress(w http.ResponseWriter, r *http.Request) 
 				SessionID: state.ID,
 				Stage:     state.Stage,
 				Progress:  state.Progress,
-				Done:      state.Status == "completed" || state.Status == statusFailed,
+				Done:      state.Status == statusCompleted || state.Status == statusFailed,
 				Error:     state.Error,
 				ElapsedMs: time.Since(state.StartedAt).Milliseconds(),
 			}
@@ -240,4 +254,53 @@ func (h *SessionHandler) StreamProgress(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+}
+
+// CancelProcessing handles POST /api/v1/sessions/{id}/cancel.
+func (h *SessionHandler) CancelProcessing(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	if sessionID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session ID required"})
+		return
+	}
+
+	val, ok := h.sessions.Load(sessionID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		return
+	}
+
+	state, ok := val.(*sessionState)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal state error"})
+		return
+	}
+
+	// Check if already completed or failed.
+	state.mu.RLock()
+	if state.Status == statusCompleted || state.Status == statusFailed {
+		state.mu.RUnlock()
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "session already finished"})
+		return
+	}
+	state.mu.RUnlock()
+
+	// Call cancel function.
+	if cancelFn, ok := h.cancelFuncs.Load(sessionID); ok {
+		if cancel, ok := cancelFn.(context.CancelFunc); ok {
+			cancel()
+		}
+		h.cancelFuncs.Delete(sessionID)
+	}
+
+	// Update session state.
+	state.mu.Lock()
+	state.Status = statusFailed
+	state.Error = "canceled by user"
+	state.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"session_id": sessionID,
+		"status":     "canceled",
+	})
 }

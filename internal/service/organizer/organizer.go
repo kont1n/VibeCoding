@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kont1n/face-grouper/internal/avatar"
 	"github.com/kont1n/face-grouper/internal/model"
-	"github.com/kont1n/face-grouper/internal/report"
+	"github.com/kont1n/face-grouper/internal/service/avatar"
+	"github.com/kont1n/face-grouper/internal/service/report"
 )
 
 // PersonInfo holds metadata about an organized person cluster for the report.
@@ -34,9 +34,17 @@ type previousAvatar struct {
 	quality    float64
 }
 
+// Organizer organizes face clusters into person directories.
+type Organizer struct{}
+
+// NewOrganizer creates a new Organizer.
+func NewOrganizer() *Organizer {
+	return &Organizer{}
+}
+
 // Organize creates Person_N directories under outputDir, symlinks photos, and picks
 // the best face thumbnail per person. Returns metadata for each person cluster.
-func Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
+func (o *Organizer) Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
 	if avatarUpdateThreshold < 0 {
 		avatarUpdateThreshold = 0
 	}

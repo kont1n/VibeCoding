@@ -7,8 +7,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kont1n/face-grouper/internal/database"
-	"github.com/kont1n/face-grouper/internal/report"
+	"github.com/kont1n/face-grouper/internal/model"
+	"github.com/kont1n/face-grouper/internal/repository/database"
+	"github.com/kont1n/face-grouper/internal/service/report"
 )
 
 // PersonHandler handles person-related API endpoints.
@@ -252,7 +253,12 @@ func (h *PersonHandler) Relations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	relations, err := h.db.Relations.GetByPersonID(r.Context(), id, minSimilarity)
+	var relations []*model.PersonRelation
+	if minSimilarity > 0 {
+		relations, err = h.db.Relations.GetByPersonIDWithMinSimilarity(r.Context(), id, minSimilarity)
+	} else {
+		relations, err = h.db.Relations.GetByPersonID(r.Context(), id)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
