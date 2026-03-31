@@ -283,10 +283,12 @@ services:
       - GPU_ENABLED=1
       - GPU_DEVICE_ID=0
       - PROVIDER_PRIORITY=cuda
-      - EXTRACT_WORKERS=4
-      - GPU_DET_SESSIONS=2
-      - GPU_REC_SESSIONS=2
-      - EMBED_BATCH_SIZE=64
+      - EXTRACT_WORKERS=12
+      - GPU_DET_SESSIONS=4
+      - GPU_REC_SESSIONS=4
+      - EMBED_BATCH_SIZE=256
+      - EMBED_FLUSH_MS=2
+      - MAX_DIM=1280
       - LOG_LEVEL=info
       - LOG_JSON=false
       - WEB_SERVE=true

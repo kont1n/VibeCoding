@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Face Grouper</title>
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="/static/d3.v7.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1079,6 +1079,11 @@ document.getElementById('btn-back-errors').addEventListener('click', () => navig
 async function renderRelationsGraph(person) {
   const container = document.getElementById('person-graph');
   const tooltip = document.getElementById('graph-tooltip');
+
+  if (!window.d3) {
+    container.innerHTML = '<div class="graph-no-data">Граф связей временно недоступен: библиотека D3 не загрузилась</div>';
+    return;
+  }
   
   // Clear previous graph.
   container.innerHTML = '';

@@ -20,6 +20,9 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed static/d3.v7.min.js
+var d3MinJS []byte
+
 // ServerConfig holds configuration for the HTTP server.
 type ServerConfig struct {
 	Port           int
@@ -86,6 +89,7 @@ func (s *Server) initHandlers() {
 func (s *Server) registerRoutes() {
 	// Static: SPA frontend.
 	s.mux.HandleFunc("GET /", s.serveIndex)
+	s.mux.HandleFunc("GET /static/d3.v7.min.js", s.serveD3)
 	s.mux.HandleFunc("GET /api/report", s.serveReport)
 
 	// File serving: only allow image files to prevent directory listing exposure.
@@ -209,6 +213,12 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(indexHTML)
+}
+
+func (s *Server) serveD3(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	_, _ = w.Write(d3MinJS)
 }
 
 func (s *Server) serveReport(w http.ResponseWriter, r *http.Request) {
