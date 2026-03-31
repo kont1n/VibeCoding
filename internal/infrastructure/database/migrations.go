@@ -86,10 +86,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		}
 
 		// Parse migration file, handling PL/pgSQL functions.
-		statements, err := parseMigrationStatements(string(content))
-		if err != nil {
-			return fmt.Errorf("parse migration %s: %w", file, err)
-		}
+		statements := parseMigrationStatements(string(content))
 
 		// Execute statements in a transaction.
 		tx, err := m.pool.Begin(ctx)
@@ -128,9 +125,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 // parseMigrationStatements parses SQL content into individual statements,
 // properly handling PL/pgSQL function bodies with embedded semicolons.
-func parseMigrationStatements(content string) ([]string, error) {
-	var statements []string
-
+func parseMigrationStatements(content string) []string {
 	// Remove comments.
 	lines := strings.Split(content, "\n")
 	var cleaned []string
@@ -158,11 +153,9 @@ func parseMigrationStatements(content string) ([]string, error) {
 		}
 
 		// Parse statements, handling $$ delimited blocks.
-		stmts := parseSQLWithDollarQuoted(part)
-		statements = append(statements, stmts...)
+		return parseSQLWithDollarQuoted(part)
 	}
-
-	return statements, nil
+	return nil
 }
 
 // parseSQLWithDollarQuoted splits SQL into statements, respecting $$ quoted blocks.

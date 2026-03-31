@@ -84,7 +84,9 @@ func (r *FaceRepository) CreateBatch(ctx context.Context, faces []*model.Face) e
 	}
 
 	results := r.pool.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	// Check all results.
 	for i := 0; i < batch.Len(); i++ {

@@ -28,7 +28,7 @@ type Face struct {
 	ID            uuid.UUID     `json:"id"`
 	PersonID      uuid.UUID     `json:"person_id"`
 	PhotoID       uuid.UUID     `json:"photo_id"`
-	Embedding     []float32     `json:"embedding"` // float32 matches pgvector vector(512)
+	Embedding     []float32     `json:"embedding"` // float32 matches pgvector vector(512).
 	BBox          BBox          `json:"bbox"`
 	Keypoints     [5][2]float64 `json:"keypoints"`
 	DetScore      float32       `json:"det_score"`

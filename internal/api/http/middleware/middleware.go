@@ -24,12 +24,12 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 	}
 }
 
-// RateLimiter middleware implements rate limiting.
 type limiterEntry struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
 
+// RateLimiter provides IP-based HTTP rate limiting middleware.
 type RateLimiter struct {
 	limiters map[string]*limiterEntry
 	mu       sync.RWMutex
@@ -112,7 +112,7 @@ func (rl *RateLimiter) Cleanup(interval time.Duration, stopCh <-chan struct{}) {
 			rl.mu.Lock()
 			now := time.Now()
 			for key, entry := range rl.limiters {
-				// Удаляем только те записи, которые не обращались > 3 минут
+				// Удаляем только те записи, которые не обращались > 3 минут.
 				if now.Sub(entry.lastSeen) > 3*time.Minute {
 					delete(rl.limiters, key)
 				}

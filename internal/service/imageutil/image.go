@@ -63,9 +63,9 @@ func DecodeImage(r io.Reader) (*Image, error) {
 				idx := (y*width + x) * 3
 				srcIdx := x * 4
 				// Convert RGBA to BGR.
-				result.Data[idx] = row[srcIdx+2]     // B
-				result.Data[idx+1] = row[srcIdx+1]   // G
-				result.Data[idx+2] = row[srcIdx]     // R
+				result.Data[idx] = row[srcIdx+2]   // B.
+				result.Data[idx+1] = row[srcIdx+1] // G.
+				result.Data[idx+2] = row[srcIdx]   // R.
 			}
 		}
 		return result, nil
@@ -76,9 +76,9 @@ func DecodeImage(r io.Reader) (*Image, error) {
 			for x := 0; x < width; x++ {
 				idx := (y*width + x) * 3
 				srcIdx := x * 4
-				result.Data[idx] = row[srcIdx+2]     // B
-				result.Data[idx+1] = row[srcIdx+1]   // G
-				result.Data[idx+2] = row[srcIdx]     // R
+				result.Data[idx] = row[srcIdx+2]   // B.
+				result.Data[idx+1] = row[srcIdx+1] // G.
+				result.Data[idx+2] = row[srcIdx]   // R.
 			}
 		}
 		return result, nil
@@ -103,11 +103,11 @@ func DecodeImage(r io.Reader) (*Image, error) {
 func SaveImage(img *Image, path string, quality int) error {
 	// Convert BGR to RGB for encoding using direct buffer access.
 	rgba := image.NewRGBA(image.Rect(0, 0, img.Width, img.Height))
-	
+
 	// Direct buffer manipulation for speed.
 	dstPix := rgba.Pix
 	srcData := img.Data
-	
+
 	for y := 0; y < img.Height; y++ {
 		srcRow := y * img.Width * 3
 		dstRow := y * rgba.Stride
@@ -115,10 +115,10 @@ func SaveImage(img *Image, path string, quality int) error {
 			srcIdx := srcRow + x*3
 			dstIdx := dstRow + x*4
 			// Convert BGR to RGBA.
-			dstPix[dstIdx] = srcData[srcIdx+2]     // R
-			dstPix[dstIdx+1] = srcData[srcIdx+1]   // G
-			dstPix[dstIdx+2] = srcData[srcIdx]     // B
-			dstPix[dstIdx+3] = 255                 // A
+			dstPix[dstIdx] = srcData[srcIdx+2]   // R.
+			dstPix[dstIdx+1] = srcData[srcIdx+1] // G.
+			dstPix[dstIdx+2] = srcData[srcIdx]   // B.
+			dstPix[dstIdx+3] = 255               // A.
 		}
 	}
 

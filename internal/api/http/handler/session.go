@@ -154,17 +154,12 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	}
 	h.sessions.Store(sessionID, state)
 
-	// Create cancellable context for the pipeline.
-	// Use context.Background() instead of r.Context() to prevent pipeline
-	// cancellation when HTTP client disconnects (e.g. browser closed).
-	pipelineCtx, cancel := context.WithCancel(context.Background())
+	// Create cancellable context for the pipeline derived from request context.
+	cancelCtx, cancel := context.WithCancel(r.Context())
 	h.cancelFuncs.Store(sessionID, cancel)
 
 	// Start pipeline asynchronously.
-	// Don't tie long-running pipeline to the HTTP request context.
-	// If the client drops/aborts the connection, r.Context() will be canceled
-	// and extraction will stop with "context canceled".
-	progressCh, err := h.runner.RunPipeline(pipelineCtx, sessionID, req.InputDir)
+	progressCh, err := h.runner.RunPipeline(cancelCtx, sessionID, req.InputDir)
 	if err != nil {
 		h.cancelFuncs.Delete(sessionID)
 		cancel()
