@@ -13,11 +13,6 @@ output:
     colored-tab:
       path: stdout
 
-issues:
-  uniq-by-line: true
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
 linters:
   default: none
   enable:

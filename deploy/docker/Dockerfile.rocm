@@ -71,7 +71,7 @@ ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/opt/rocm/lib
 COPY --from=builder /build/face-grouper .
 
 # Copy configuration template
-COPY --from=builder /build/.env.example .env
+COPY --from=builder /build/deploy/env/.env.example .env
 
 # Create directories for data (will be mounted as volumes)
 RUN mkdir -p /app/dataset /app/output /app/models \
