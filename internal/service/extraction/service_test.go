@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/kont1n/face-grouper/internal/model"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
+	"github.com/kont1n/face-grouper/internal/model"
 	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
