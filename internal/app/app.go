@@ -218,18 +218,28 @@ func (a *App) runProcess(ctx context.Context) error {
 		NewReportStep(appCfg),
 	)
 
+	if appCfg.Web.Serve {
+		_, _ = fmt.Fprintf(w, "\n=== Starting web UI ===\n")
+		// Run processing in background so UI becomes available immediately.
+		go func() {
+			if err := pipeline.Execute(ctx, pc); err != nil {
+				logger.Error(ctx, "processing pipeline failed", zap.Error(err))
+				return
+			}
+
+			// Print summary after pipeline completion.
+			a.printSummary(w, pc.Report, pc.StageDurations)
+		}()
+
+		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)
+	}
+
 	if err := pipeline.Execute(ctx, pc); err != nil {
 		return err
 	}
 
 	// Print summary.
 	a.printSummary(w, pc.Report, pc.StageDurations)
-
-	// Start web UI if requested.
-	if appCfg.Web.Serve {
-		_, _ = fmt.Fprintf(w, "\n=== Starting web UI ===\n")
-		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)
-	}
 
 	_, _ = fmt.Fprintf(w, "\nTip: run with --serve to view results in browser, or --view to view previous results\n")
 	return nil

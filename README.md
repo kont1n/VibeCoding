@@ -257,20 +257,3 @@ go test ./internal/api/http/handler/... -v
 | 1000 фото, 2000 лиц | ~1 мин (GPU) |
 
 *Время зависит от hardware и настроек.*
-
-## Лицензия
-
-MIT License — см. [LICENSE](LICENSE) файл.
-
-## Вклад
-
-1. Fork репозиторий
-2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit изменений (`git commit -m 'Add amazing feature'`)
-4. Push в branch (`git push origin feature/amazing-feature`)
-5. Откройте Pull Request
-
-## Контакты
-
-- **Issues:** [GitHub Issues](https://github.com/kont1n/face-grouper/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/kont1n/face-grouper/discussions)
