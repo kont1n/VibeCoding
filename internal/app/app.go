@@ -180,10 +180,14 @@ func (a *App) runProcess(ctx context.Context) error {
 
 	// Log selected provider.
 	selectedProvider := ml.GetSelectedProvider()
+	requestedProvider, fallback, fallbackReason := ml.GetProviderDiagnostics()
 	logger.Info(ctx, "ONNX Runtime provider initialized",
 		zap.String("provider", selectedProvider.Name),
 		zap.String("type", string(selectedProvider.Type)),
 		zap.Int("device_id", selectedProvider.DeviceID),
+		zap.String("requested_provider", string(requestedProvider)),
+		zap.Bool("fallback", fallback),
+		zap.String("fallback_reason", fallbackReason),
 	)
 
 	api := a.diContainer.API(ctx)

@@ -7,7 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/joho/godotenv v1.5.1
 	github.com/pgvector/pgvector-go v0.3.0
-	github.com/yalue/onnxruntime_go v1.23.0
+	github.com/yalue/onnxruntime_go v1.22.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/sync v0.20.0
 	golang.org/x/time v0.15.0

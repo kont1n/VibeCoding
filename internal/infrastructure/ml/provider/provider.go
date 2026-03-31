@@ -206,6 +206,7 @@ func detectROCm() ProviderInfo {
 	libPaths := []string{
 		filepath.Join(rocmPath, "lib"),
 		filepath.Join(hipPath, "lib"),
+		"/opt/onnxruntime/lib",
 		"/opt/rocm/lib",
 		"/usr/lib/x86_64-linux-gnu",
 		"/usr/local/lib",

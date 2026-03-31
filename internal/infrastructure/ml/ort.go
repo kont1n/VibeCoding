@@ -13,6 +13,9 @@ import (
 var ortInitialized bool
 var sessionTuning SessionTuning
 var selectedProvider provider.ProviderInfo
+var requestedProvider provider.ProviderType
+var providerFallback bool
+var providerFallbackReason string
 
 // SessionTuning controls ONNX Runtime session-level performance options.
 type SessionTuning struct {
@@ -43,6 +46,12 @@ func SelectAndInitializeProvider(cfg ProviderConfig, libPath string) error {
 	if ortInitialized {
 		return nil
 	}
+	requestedProvider = cfg.Preferred
+	if cfg.ForceCPU {
+		requestedProvider = provider.ProviderCPU
+	}
+	providerFallback = false
+	providerFallbackReason = ""
 
 	// Select provider.
 	selectionCfg := provider.SelectionConfig{
@@ -58,6 +67,12 @@ func SelectAndInitializeProvider(cfg ProviderConfig, libPath string) error {
 	}
 
 	selectedProvider = selected
+	if requestedProvider != "" &&
+		requestedProvider != provider.ProviderCPU &&
+		selectedProvider.Type != requestedProvider {
+		providerFallback = true
+		providerFallbackReason = detectProviderUnavailabilityReason(requestedProvider)
+	}
 
 	// Initialize ONNX Runtime.
 	if libPath == "" {
@@ -82,6 +97,11 @@ func SelectAndInitializeProvider(cfg ProviderConfig, libPath string) error {
 // GetSelectedProvider returns the currently selected provider.
 func GetSelectedProvider() provider.ProviderInfo {
 	return selectedProvider
+}
+
+// GetProviderDiagnostics returns requested provider and fallback details.
+func GetProviderDiagnostics() (provider.ProviderType, bool, string) {
+	return requestedProvider, providerFallback, providerFallbackReason
 }
 
 // DestroyORT releases ONNX Runtime resources. Call at shutdown.
@@ -121,7 +141,10 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 	}
 
 	// Add execution provider based on selection.
-	providerType := cfg.Preferred
+	providerType := selectedProvider.Type
+	if providerType == "" {
+		providerType = cfg.Preferred
+	}
 	if cfg.ForceCPU {
 		providerType = provider.ProviderCPU
 	}
@@ -145,6 +168,8 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 		if err := opts.AppendExecutionProviderCUDA(cudaOpts); err != nil {
 			// Fallback to CPU if CUDA fails and allowed.
 			if cfg.AllowFallback {
+				providerFallback = true
+				providerFallbackReason = fmt.Sprintf("append CUDA provider failed: %v", err)
 				cudaOpts.Destroy()
 				// Continue without GPU - already logged warning.
 			} else {
@@ -157,11 +182,20 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 		}
 
 	case provider.ProviderROCm:
-		// Fallback to CPU.
-		if !cfg.AllowFallback {
-			return nil, fmt.Errorf("ROCm provider not available in this build")
+		rocmOpts := map[string]string{
+			"device_id":                 strconv.Itoa(cfg.DeviceID),
+			"do_copy_in_default_stream": "1",
 		}
-		// Continue with CPU fallback.
+		if err := opts.AppendExecutionProvider("ROCM", rocmOpts); err != nil {
+			if cfg.AllowFallback {
+				providerFallback = true
+				providerFallbackReason = fmt.Sprintf("append ROCm provider failed: %v", err)
+				// Continue with CPU fallback.
+			} else {
+				opts.Destroy()
+				return nil, fmt.Errorf("append ROCm provider: %w", err)
+			}
+		}
 
 	case provider.ProviderDirectML:
 		// For now, fallback to CPU.
@@ -176,4 +210,20 @@ func SessionOptions(cfg ProviderConfig) (*ort.SessionOptions, error) {
 	}
 
 	return opts, nil
+}
+
+func detectProviderUnavailabilityReason(p provider.ProviderType) string {
+	detected := provider.DetectAvailableProviders()
+	for _, info := range detected.Providers {
+		if info.Type == p {
+			if info.Error != nil {
+				return info.Error.Error()
+			}
+			if !info.Available {
+				return "provider is not available"
+			}
+			return ""
+		}
+	}
+	return "provider is not detected on this host"
 }

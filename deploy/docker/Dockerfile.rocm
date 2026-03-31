@@ -18,6 +18,7 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy go.mod and go.sum for dependency caching
@@ -29,13 +30,20 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Download ONNX Runtime ROCm library
-ARG ONNXRUNTIME_VERSION=1.18.0
-RUN curl -L -o /tmp/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz \
-    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz \
-    && tar -xzf /tmp/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz -C /opt/ \
-    && mv /opt/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
-    && rm /tmp/onnxruntime-linux-x64-rocm-${ONNXRUNTIME_VERSION}.tgz
+# Download ONNX Runtime ROCm libs from PyPI wheel.
+# Keep all ORT artifacts on the same 1.22.x line (ROCm EP removed in 1.23+).
+ARG ONNXRUNTIME_VERSION=1.22.0
+ARG ONNXRUNTIME_ROCM_WHEEL_URL=https://files.pythonhosted.org/packages/78/39/e1de761971a250b107859175a8164cb3007c1820d78bd2b4459990edd48b/onnxruntime_rocm-1.22.2.post1-cp312-cp312-manylinux_2_35_x86_64.whl
+RUN curl -L -o /tmp/onnxruntime-rocm.whl \
+    ${ONNXRUNTIME_ROCM_WHEEL_URL} \
+    && mkdir -p /opt/onnxruntime/lib /opt/onnxruntime/include \
+    && python3 -c "import zipfile,shutil,pathlib; z=zipfile.ZipFile('/tmp/onnxruntime-rocm.whl'); files=['onnxruntime/capi/libonnxruntime.so.1.22.2','onnxruntime/capi/libonnxruntime_providers_shared.so','onnxruntime/capi/libonnxruntime_providers_rocm.so','onnxruntime/capi/libonnxruntime_providers_migraphx.so']; t=pathlib.Path('/opt/onnxruntime/lib'); [shutil.copyfileobj(z.open(i), open(t/pathlib.Path(i).name,'wb')) for i in files]" \
+    && ln -sf /opt/onnxruntime/lib/libonnxruntime.so.1.22.2 /opt/onnxruntime/lib/libonnxruntime.so \
+    && curl -L -o /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    && tar -xzf /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz -C /tmp \
+    && cp -r /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}/include/* /opt/onnxruntime/include/ \
+    && rm -rf /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz /tmp/onnxruntime-rocm.whl
 
 # Set environment variables for CGO
 ENV CGO_ENABLED=1
@@ -58,8 +66,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    hipblas \
+    miopen-hip \
+    hipfft \
+    rocm-smi-lib \
+    hip-runtime-amd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# ORT ROCm EP 1.22.x expects older SONAMEs; provide compatibility links.
+RUN ln -sf /opt/rocm/lib/libhipblas.so.3 /opt/rocm/lib/libhipblas.so.2 \
+    && ln -sf /opt/rocm/lib/libamdhip64.so.7 /opt/rocm/lib/libamdhip64.so.6 \
+    && ln -sf /opt/rocm/lib/librocm_smi64.so.1 /opt/rocm/lib/librocm_smi64.so.7
 
 # Copy ONNX Runtime ROCm from builder
 COPY --from=builder /opt/onnxruntime /opt/onnxruntime

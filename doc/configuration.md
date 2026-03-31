@@ -57,16 +57,16 @@
 
 | Переменная | Тип | По умолчанию | Описание |
 |-----------|-----|-------------|----------|
-| `EXTRACT_WORKERS` | int | `4` | Количество параллельных воркеров обработки |
-| `GPU_ENABLED` | bool | `0` | Включить GPU-ускорение (`1` — да) |
+| `EXTRACT_WORKERS` | int | `12` | Количество параллельных воркеров обработки |
+| `GPU_ENABLED` | bool | `1` | Включить GPU-ускорение (`1` — да) |
 | `GPU_DEVICE_ID` | int | `0` | ID GPU-устройства (для multi-GPU) |
 | `FORCE_CPU` | bool | `0` | Принудительное использование CPU |
-| `PROVIDER_PRIORITY` | string | `auto` | Приоритет провайдера: `auto`, `cpu`, `cuda`, `rocm`, `directml` |
-| `GPU_DET_SESSIONS` | int | `2` | Количество ONNX-сессий детектора (GPU) |
-| `GPU_REC_SESSIONS` | int | `2` | Количество ONNX-сессий рекогнайзера (GPU) |
-| `EMBED_BATCH_SIZE` | int | `64` | Размер батча для извлечения эмбеддингов |
+| `PROVIDER_PRIORITY` | string | `rocm` | Приоритет провайдера: `auto`, `cpu`, `cuda`, `rocm`, `directml` |
+| `GPU_DET_SESSIONS` | int | `1` | Количество ONNX-сессий детектора (GPU) |
+| `GPU_REC_SESSIONS` | int | `1` | Количество ONNX-сессий рекогнайзера (GPU) |
+| `EMBED_BATCH_SIZE` | int | `192` | Размер батча для извлечения эмбеддингов |
 | `EMBED_FLUSH_MS` | int | `10` | Таймаут flush батча (мс) |
-| `MAX_DIM` | int | `1920` | Максимальная размерность изображения (0 — без ограничения) |
+| `MAX_DIM` | int | `1280` | Максимальная размерность изображения (0 — без ограничения) |
 | `DET_THRESH` | float | `0.5` | Порог уверенности детекции лиц |
 
 ### Выбор GPU-провайдера
@@ -82,6 +82,24 @@
 | `cpu` | — | Всегда доступен (fallback) |
 
 Для ручного выбора: `PROVIDER_PRIORITY=cuda` (или `rocm`, `directml`, `cpu`).
+
+### Fallback-поведение
+
+Если выбранный GPU-провайдер недоступен, приложение автоматически переходит на CPU (fallback), а причина фиксируется в стартовом логе:
+- `requested_provider`
+- `fallback=true|false`
+- `fallback_reason`
+
+### Рекомендуемый ROCm-профиль (проверенный)
+
+Для AMD ROCm зафиксирован профиль, показавший лучший результат на тестовом наборе:
+- `GPU_ENABLED=1`
+- `PROVIDER_PRIORITY=rocm`
+- `EXTRACT_WORKERS=12`
+- `GPU_DET_SESSIONS=1`
+- `GPU_REC_SESSIONS=1`
+- `EMBED_BATCH_SIZE=192`
+- `MAX_DIM=1280`
 
 ## Clustering
 

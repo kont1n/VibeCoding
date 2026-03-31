@@ -56,7 +56,18 @@ func SelectProvider(cfg SelectionConfig) (ProviderInfo, error) {
 
 		// Preferred provider not available.
 		if !cfg.AllowFallback {
-			return ProviderInfo{}, fmt.Errorf("preferred provider %s not available", cfg.Preferred)
+			reason := "provider not detected"
+			for _, p := range detection.Providers {
+				if p.Type == cfg.Preferred {
+					if p.Error != nil {
+						reason = p.Error.Error()
+					} else if !p.Available {
+						reason = "provider detected but unavailable"
+					}
+					break
+				}
+			}
+			return ProviderInfo{}, fmt.Errorf("preferred provider %s not available: %s", cfg.Preferred, reason)
 		}
 	}
 

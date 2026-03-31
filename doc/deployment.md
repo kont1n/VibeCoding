@@ -44,7 +44,7 @@ docker build -t face-grouper:rocm -f deploy/docker/Dockerfile.rocm .
 ```
 
 - Базовый образ: `rocm/dev-ubuntu-22.04:latest`
-- ONNX Runtime: ROCm
+- ONNX Runtime: ROCm EP (`1.22.x`, зафиксировано в образе)
 - Требования:
   - AMD GPU (RX 5000+, RX 6000+, RX 7000+, MI50+)
   - ROCm 5.x+
@@ -65,7 +65,28 @@ docker run -d --name face-grouper \
 
 | Аргумент | По умолчанию | Описание |
 |----------|-------------|----------|
-| `ONNXRUNTIME_VERSION` | `1.23.0` | Версия ONNX Runtime |
+| `ONNXRUNTIME_VERSION` | `1.22.0` | Версия ONNX Runtime (для ROCm EP) |
+
+### Проверка активного провайдера
+
+После старта контейнера проверьте логи:
+
+```bash
+docker logs face-grouper-rocm | rg "ONNX Runtime provider initialized|fallback"
+```
+
+Ожидаемо:
+- `type=rocm` — ROCm EP активен
+- `type=cpu` + `fallback=true` — безопасный fallback на CPU с причиной в `fallback_reason`
+
+Рекомендуемый runtime-профиль ROCm:
+- `GPU_ENABLED=1`
+- `PROVIDER_PRIORITY=rocm`
+- `EXTRACT_WORKERS=12`
+- `GPU_DET_SESSIONS=1`
+- `GPU_REC_SESSIONS=1`
+- `EMBED_BATCH_SIZE=192`
+- `MAX_DIM=1280`
 
 ---
 
