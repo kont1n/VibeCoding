@@ -110,6 +110,60 @@ func BenchmarkCluster512D(b *testing.B) {
 	}
 }
 
+func TestTwoStageReducesTransitiveChain(t *testing.T) {
+	SetRefineFactor(1.0)
+	SetTwoStageConfig(true, 0.96, 0.98, 1)
+	defer SetTwoStageConfig(false, 0, 0, 1)
+
+	faces := []model.Face{
+		{Embedding: []float32{1.0, 0.0}},
+		{Embedding: []float32{0.98, 0.20}},
+		{Embedding: []float32{0.92, 0.39}},
+		{Embedding: []float32{0.83, 0.56}},
+		{Embedding: []float32{0.70, 0.71}},
+	}
+
+	clusters, err := Cluster(context.Background(), faces, 0.80)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
+	if len(clusters) <= 1 {
+		t.Fatalf("expected split clusters with two-stage mode, got %d", len(clusters))
+	}
+}
+
+func TestTwoStageMergesMutualNearestMiniClusters(t *testing.T) {
+	SetRefineFactor(1.0)
+	SetTwoStageConfig(true, 0.99, 0.95, 1)
+	defer SetTwoStageConfig(false, 0, 0, 1)
+
+	faces := []model.Face{
+		{Embedding: []float32{1.0, 0.0}},
+		{Embedding: []float32{0.99, 0.02}},
+		{Embedding: []float32{0.97, 0.23}},
+		{Embedding: []float32{0.95, 0.30}},
+	}
+
+	clusters, err := Cluster(context.Background(), faces, 0.90)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
+	maxSize := 0
+	for _, c := range clusters {
+		if len(c.Faces) > maxSize {
+			maxSize = len(c.Faces)
+		}
+	}
+	if maxSize < 3 {
+		t.Fatalf("expected centroid merge to recover bigger cluster, got max=%d", maxSize)
+	}
+}
+
+func TestAmbiguityGateConfigCanBeSet(t *testing.T) {
+	SetAmbiguityGateConfig(true, 8, 0.52, 0.60, 0.55)
+	SetAmbiguityGateConfig(false, 0, 0, 0, 0)
+}
+
 func makeRandomFaces(n, dim int) []model.Face {
 	r := rand.New(rand.NewSource(42))
 	faces := make([]model.Face, n)

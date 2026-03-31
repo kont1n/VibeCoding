@@ -17,6 +17,7 @@ import (
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/repository/database"
+	"github.com/kont1n/face-grouper/internal/service/clustering"
 	"github.com/kont1n/face-grouper/internal/service/extraction"
 	"github.com/kont1n/face-grouper/internal/service/organizer"
 	"github.com/kont1n/face-grouper/internal/service/report"
@@ -192,6 +193,20 @@ func (a *App) runProcess(ctx context.Context) error {
 
 	api := a.diContainer.API(ctx)
 	appCfg := config.AppConfig
+	clustering.SetRefineFactor(appCfg.Cluster.RefineFactor)
+	clustering.SetTwoStageConfig(
+		appCfg.Cluster.EnableTwoStage,
+		appCfg.Cluster.PreclusterThreshold,
+		appCfg.Cluster.CentroidMergeThreshold,
+		appCfg.Cluster.MutualK,
+	)
+	clustering.SetAmbiguityGateConfig(
+		appCfg.Cluster.EnableAmbiguityGate,
+		appCfg.Cluster.AmbiguityTopK,
+		appCfg.Cluster.AmbiguityMeanMin,
+		appCfg.Cluster.AmbiguityMeanMax,
+		appCfg.Cluster.AmbiguityCentroidMax,
+	)
 
 	outputDir := appCfg.App.OutputDir
 	thumbDir := filepath.Join(outputDir, ".thumbnails")
@@ -275,6 +290,7 @@ func buildReportFromResults(start time.Time, cfg *config.Config, totalImages int
 		Threshold:   cfg.Cluster.Threshold,
 		GPU:         cfg.Extract.GPU,
 		Persons:     reportPersons,
+		Diagnostics: report.AnalyzeClusters(extractResult.Clusters, cfg.Cluster.Threshold, cfg.Cluster.RefineFactor, 5),
 	})
 }
 
@@ -289,7 +305,7 @@ func (a *App) printSummary(w io.Writer, rpt *report.Report, stageDurations map[s
 	_, _ = fmt.Fprintf(w, "Scan:           %s\n", stageDurations["scan"].Round(time.Millisecond))
 	_, _ = fmt.Fprintf(w, "Extract:        %s\n", stageDurations["extract"].Round(time.Millisecond))
 	_, _ = fmt.Fprintf(w, "Cluster:        %s\n", stageDurations["cluster"].Round(time.Millisecond))
-	_, _ = fmt.Fprintf(w, "OrganizeAvatar: %s\n", stageDurations["organize_avatar"].Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "Organize:       %s\n", stageDurations["organize"].Round(time.Millisecond))
 	_, _ = fmt.Fprintf(w, "Report:  %s\n", filepath.Join(rpt.OutputDir, "report.json"))
 	_, _ = fmt.Fprintf(w, "Log:     %s\n", filepath.Join(rpt.OutputDir, "processing.log"))
 }

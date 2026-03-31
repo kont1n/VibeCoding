@@ -22,6 +22,9 @@ type ModelsConfig struct {
 // ExtractConfig хранит настройки извлечения эмбеддингов.
 type ExtractConfig struct {
 	Workers          int
+	DetInputSize     int
+	MinFaceAreaRatio float64
+	MinQualityScore  float64
 	GPU              bool
 	GPUDeviceID      int
 	ForceCPU         bool
@@ -36,7 +39,17 @@ type ExtractConfig struct {
 
 // ClusterConfig хранит настройки кластеризации.
 type ClusterConfig struct {
-	Threshold float64
+	Threshold            float64
+	RefineFactor         float64
+	EnableTwoStage       bool
+	PreclusterThreshold  float64
+	CentroidMergeThreshold float64
+	MutualK              int
+	EnableAmbiguityGate  bool
+	AmbiguityTopK        int
+	AmbiguityMeanMin     float64
+	AmbiguityMeanMax     float64
+	AmbiguityCentroidMax float64
 }
 
 // OrganizerConfig хранит настройки организации результатов.
@@ -108,6 +121,9 @@ func NewModelsConfig() ModelsConfig {
 func NewExtractConfig() ExtractConfig {
 	return ExtractConfig{
 		Workers:          getInt("EXTRACT_WORKERS", 4),
+		DetInputSize:     getInt("DET_INPUT_SIZE", 640),
+		MinFaceAreaRatio: getFloat("MIN_FACE_AREA_RATIO", 0.0),
+		MinQualityScore:  getFloat("MIN_QUALITY_SCORE", 0.0),
 		GPU:              getBool("GPU_ENABLED", false),
 		GPUDeviceID:      getInt("GPU_DEVICE_ID", 0),
 		ForceCPU:         getBool("FORCE_CPU", false),
@@ -124,7 +140,17 @@ func NewExtractConfig() ExtractConfig {
 // NewClusterConfig создаёт конфигурацию кластеризации из ENV.
 func NewClusterConfig() ClusterConfig {
 	return ClusterConfig{
-		Threshold: getFloat("CLUSTER_THRESHOLD", 0.35),
+		Threshold:              getFloat("CLUSTER_THRESHOLD", 0.35),
+		RefineFactor:           getFloat("CLUSTER_REFINE_FACTOR", 1.0),
+		EnableTwoStage:         getBool("CLUSTER_ENABLE_TWO_STAGE", false),
+		PreclusterThreshold:    getFloat("CLUSTER_PRECLUSTER_THRESHOLD", 0.0),
+		CentroidMergeThreshold: getFloat("CLUSTER_CENTROID_MERGE_THRESHOLD", 0.0),
+		MutualK:                getInt("CLUSTER_MUTUAL_K", 1),
+		EnableAmbiguityGate:    getBool("CLUSTER_ENABLE_AMBIGUITY_GATE", false),
+		AmbiguityTopK:          getInt("CLUSTER_AMBIGUITY_TOPK", 12),
+		AmbiguityMeanMin:       getFloat("CLUSTER_AMBIGUITY_MEAN_MIN", 0.0),
+		AmbiguityMeanMax:       getFloat("CLUSTER_AMBIGUITY_MEAN_MAX", 0.0),
+		AmbiguityCentroidMax:   getFloat("CLUSTER_AMBIGUITY_CENTROID_MAX", 0.0),
 	}
 }
 

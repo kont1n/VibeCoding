@@ -13,6 +13,7 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/config"
+	"github.com/kont1n/face-grouper/internal/service/clustering"
 	"github.com/kont1n/face-grouper/internal/service/report"
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
@@ -179,12 +180,27 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 
 	// --- Cluster. ---.
 	send("cluster", "Группировка...", 0.05)
+	clustering.SetRefineFactor(appCfg.Cluster.RefineFactor)
+	clustering.SetTwoStageConfig(
+		appCfg.Cluster.EnableTwoStage,
+		appCfg.Cluster.PreclusterThreshold,
+		appCfg.Cluster.CentroidMergeThreshold,
+		appCfg.Cluster.MutualK,
+	)
+	clustering.SetAmbiguityGateConfig(
+		appCfg.Cluster.EnableAmbiguityGate,
+		appCfg.Cluster.AmbiguityTopK,
+		appCfg.Cluster.AmbiguityMeanMin,
+		appCfg.Cluster.AmbiguityMeanMax,
+		appCfg.Cluster.AmbiguityCentroidMax,
+	)
 
 	clusters, err := api.Cluster(ctx, extractResult.Faces, appCfg.Cluster.Threshold)
 	if err != nil {
 		fail(fmt.Sprintf("clustering error: %v", err))
 		return
 	}
+	extractResult.Clusters = clusters
 	processedItems = len(extractResult.Faces)
 	totalItems = len(extractResult.Faces)
 	_, _ = fmt.Fprintf(w, "Found %d person(s)\n", len(clusters))

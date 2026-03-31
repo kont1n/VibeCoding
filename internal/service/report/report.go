@@ -23,6 +23,7 @@ type Report struct {
 	Threshold    float64           `json:"threshold"`
 	GPU          bool              `json:"gpu"`
 	Persons      []PersonReport    `json:"persons"`
+	Diagnostics  *ClusterDiagnostics `json:"diagnostics,omitempty"`
 }
 
 // PersonReport holds per-person metadata within a report.
@@ -49,6 +50,7 @@ type BuildParams struct {
 	Threshold   float64
 	GPU         bool
 	Persons     []PersonBuildInfo
+	Diagnostics *ClusterDiagnostics
 }
 
 // PersonBuildInfo contains per-person data for report building.
@@ -75,6 +77,7 @@ func Build(params BuildParams) *Report {
 		FileErrors:   params.FileErrors,
 		Threshold:    params.Threshold,
 		GPU:          params.GPU,
+		Diagnostics:  params.Diagnostics,
 	}
 
 	for _, p := range params.Persons {

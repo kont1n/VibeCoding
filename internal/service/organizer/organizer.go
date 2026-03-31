@@ -182,6 +182,9 @@ func (o *Organizer) Organize(clusters []model.Cluster, outputDir string, avatarU
 }
 
 func scoreFace(face model.Face) float64 {
+	if face.QualityScore > 0 {
+		return float64(face.QualityScore)
+	}
 	if face.Thumbnail == "" {
 		return 0
 	}

@@ -277,6 +277,8 @@ func (s *extractionService) processImage(
 	if err != nil {
 		return nil, fmt.Errorf("detection: %w", err)
 	}
+	dets = s.filterDetectionsByArea(dets, img.Width, img.Height)
+	dets = s.filterDetectionsByQuality(dets, img.Width, img.Height)
 	if len(dets) == 0 {
 		return nil, nil
 	}
@@ -284,7 +286,7 @@ func (s *extractionService) processImage(
 	// Face alignment.
 	aligned := make([]*imageutil.Image, len(dets))
 	for i, d := range dets {
-		aligned[i] = ml.NormCrop(img, d.Kps, recSize)
+		aligned[i] = ml.NormCrop(img, normalizeKeypointsOrder(d.Kps), recSize)
 	}
 	defer func() {
 		for _, a := range aligned {
@@ -333,6 +335,7 @@ func (s *extractionService) processImage(
 			Keypoints:     keypoints,
 			Embedding:     embeddings[i],
 			DetScore:      float32(d.Score),
+			QualityScore:  estimateFaceQualityScore(d, img.Width, img.Height),
 			Thumbnail:     thumb,
 			FilePath:      imagePath,
 			ThumbnailPath: thumb,
@@ -422,6 +425,83 @@ func shortPathHash(path string) string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(path))
 	return fmt.Sprintf("%016x", h.Sum64())[:10]
+}
+
+func normalizeKeypointsOrder(kps [5][2]float32) [5][2]float32 {
+	// SCRFD exports keypoints in some model variants as
+	// [right_eye, left_eye, nose, right_mouth, left_mouth].
+	// ArcFace alignment expects [left_eye, right_eye, nose, left_mouth, right_mouth].
+	if kps[0][0] > kps[1][0] {
+		kps[0], kps[1] = kps[1], kps[0]
+	}
+	if kps[3][0] > kps[4][0] {
+		kps[3], kps[4] = kps[4], kps[3]
+	}
+	return kps
+}
+
+func estimateFaceQualityScore(det ml.Detection, imgW, imgH int) float32 {
+	if imgW <= 0 || imgH <= 0 {
+		return float32(det.Score)
+	}
+	boxW := int(det.X2 - det.X1)
+	if boxW < 0 {
+		boxW = 0
+	}
+	boxH := int(det.Y2 - det.Y1)
+	if boxH < 0 {
+		boxH = 0
+	}
+	areaRatio := float64(boxW*boxH) / float64(imgW*imgH)
+	if areaRatio < 0 {
+		areaRatio = 0
+	}
+	if areaRatio > 1 {
+		areaRatio = 1
+	}
+	// Simple proxy: confidence weighted by face size.
+	sizeBoost := 0.5 + areaRatio*4.0
+	if sizeBoost > 1.0 {
+		sizeBoost = 1.0
+	}
+	return float32(float64(det.Score) * sizeBoost)
+}
+
+func (s *extractionService) filterDetectionsByArea(dets []ml.Detection, imgW, imgH int) []ml.Detection {
+	minAreaRatio := s.cfg.MinFaceAreaRatio
+	if minAreaRatio <= 0 || imgW <= 0 || imgH <= 0 {
+		return dets
+	}
+	imageArea := float64(imgW * imgH)
+	if imageArea <= 0 {
+		return dets
+	}
+	filtered := make([]ml.Detection, 0, len(dets))
+	for _, d := range dets {
+		w := float64(d.X2 - d.X1)
+		h := float64(d.Y2 - d.Y1)
+		if w <= 0 || h <= 0 {
+			continue
+		}
+		if (w*h)/imageArea >= minAreaRatio {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
+}
+
+func (s *extractionService) filterDetectionsByQuality(dets []ml.Detection, imgW, imgH int) []ml.Detection {
+	minQuality := s.cfg.MinQualityScore
+	if minQuality <= 0 {
+		return dets
+	}
+	filtered := make([]ml.Detection, 0, len(dets))
+	for _, d := range dets {
+		if float64(estimateFaceQualityScore(d, imgW, imgH)) >= minQuality {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
 }
 
 // recognizerBatcher — batcher для распознавания лиц.

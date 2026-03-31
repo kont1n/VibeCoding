@@ -165,6 +165,7 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorGatew
 			det, err := ml.NewDetectorGateway(ml.DetectorConfig{
 				ModelPath: modelPath,
 				Provider:  providerCfg,
+				InputSize: cfg.DetInputSize,
 				DetThresh: float32(cfg.DetThresh),
 			})
 			if err != nil {

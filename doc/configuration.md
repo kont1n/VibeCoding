@@ -59,6 +59,8 @@
 |-----------|-----|-------------|----------|
 | `EXTRACT_WORKERS` | int | `12` | Количество параллельных воркеров обработки |
 | `GPU_ENABLED` | bool | `1` | Включить GPU-ускорение (`1` — да) |
+| `DET_INPUT_SIZE` | int | `640` | Размер входа детектора SCRFD (например `512` или `448` для ускорения; меньше — быстрее, но хуже для мелких лиц) |
+| `MIN_FACE_AREA_RATIO` | float | `0.0` | Минимальная доля площади лица от площади кадра (например `0.0003`), чтобы отсечь очень мелкие/шумные детекции |
 | `GPU_DEVICE_ID` | int | `0` | ID GPU-устройства (для multi-GPU) |
 | `FORCE_CPU` | bool | `0` | Принудительное использование CPU |
 | `PROVIDER_PRIORITY` | string | `rocm` | Приоритет провайдера: `auto`, `cpu`, `cuda`, `rocm`, `directml` |
@@ -106,6 +108,16 @@
 | Переменная | Тип | По умолчанию | Описание |
 |-----------|-----|-------------|----------|
 | `CLUSTER_THRESHOLD` | float | `0.5` | Порог cosine similarity для объединения лиц в кластер. Меньше = строже, больше = свободнее |
+| `CLUSTER_REFINE_FACTOR` | float | `1.0` | Множитель строгости centroid-refinement (`>1.0` строже, `<1.0` мягче) |
+| `CLUSTER_ENABLE_TWO_STAGE` | bool | `false` | Включить двухэтапную кластеризацию (pre-cluster + centroid merge) |
+| `CLUSTER_PRECLUSTER_THRESHOLD` | float | `0.0` | Порог pre-cluster. `0` = авто (`CLUSTER_THRESHOLD + 0.08`) |
+| `CLUSTER_CENTROID_MERGE_THRESHOLD` | float | `0.0` | Порог merge мини-кластеров по центроидам. `0` = `CLUSTER_THRESHOLD` |
+| `CLUSTER_MUTUAL_K` | int | `1` | Размер взаимного top-k соседства для merge мини-кластеров |
+| `CLUSTER_ENABLE_AMBIGUITY_GATE` | bool | `false` | Включить pruning «неопределенных» лиц в очень крупных кластерах |
+| `CLUSTER_AMBIGUITY_TOPK` | int | `12` | Сколько ближайших соседей использовать для mean-sim ambiguity-метрики |
+| `CLUSTER_AMBIGUITY_MEAN_MIN` | float | `0.0` | Нижняя граница mean top-k similarity. `0` = авто |
+| `CLUSTER_AMBIGUITY_MEAN_MAX` | float | `0.0` | Верхняя граница mean top-k similarity. `0` = авто |
+| `CLUSTER_AMBIGUITY_CENTROID_MAX` | float | `0.0` | Максимум similarity к центроиду для ambiguity-pruning. `0` = авто |
 
 > Рекомендуемые значения: 0.4 — строгая кластеризация, 0.5 — сбалансированная, 0.6 — мягкая.
 

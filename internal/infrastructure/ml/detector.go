@@ -33,6 +33,7 @@ type Detector struct {
 type DetectorConfig struct {
 	ModelPath string
 	Provider  ProviderConfig
+	InputSize int
 	DetThresh float32
 	NMSThresh float32
 }
@@ -74,6 +75,10 @@ func NewDetector(cfg DetectorConfig) (*Detector, error) {
 		nmsThresh:   0.4,
 		detThresh:   0.5,
 		centerCache: make(map[[3]int][][2]float32),
+	}
+	if cfg.InputSize > 0 {
+		d.inputW = int64(cfg.InputSize)
+		d.inputH = int64(cfg.InputSize)
 	}
 
 	if cfg.DetThresh > 0 {
