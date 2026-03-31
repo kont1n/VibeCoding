@@ -2,6 +2,7 @@
 package organizer
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -113,7 +114,8 @@ func (o *Organizer) Organize(clusters []model.Cluster, outputDir string, avatarU
 		avatarScore := 0.0
 
 		if bestThumb != "" {
-			avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d.jpg", personID)))
+			avatarSuffix := shortFileHash(bestThumb)
+			avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d_%s.jpg", personID, avatarSuffix)))
 			avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
 			if err := copyFile(bestThumb, avatarAbs); err != nil {
 				_, _ = fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
@@ -242,4 +244,18 @@ func shortPathHash(path string) string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(path))
 	return fmt.Sprintf("%016x", h.Sum64())[:10]
+}
+
+func shortFileHash(path string) string {
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return shortPathHash(path)
+	}
+	defer func() { _ = f.Close() }()
+
+	h := sha1.New() //nolint:gosec // used only for cache-busting filename suffix.
+	if _, err := io.Copy(h, f); err != nil {
+		return shortPathHash(path)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:8]
 }
