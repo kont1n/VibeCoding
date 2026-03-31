@@ -36,8 +36,8 @@ func TestPersonGet_NoDB_NoReport(t *testing.T) {
 	}
 }
 
-// TestPersonRename_NoDB verifies 503 when no database is configured.
-func TestPersonRename_NoDB(t *testing.T) {
+// TestPersonRename_NoDB_NoReport verifies 404 when no database and no report.json.
+func TestPersonRename_NoDB_NoReport(t *testing.T) {
 	t.Parallel()
 
 	h := NewPersonHandler(t.TempDir(), nil)
@@ -46,8 +46,9 @@ func TestPersonRename_NoDB(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.Rename(rec, req)
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected %d, got %d: %s", http.StatusServiceUnavailable, rec.Code, rec.Body)
+	// Without DB, falls back to report.json which doesn't exist → 404.
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body)
 	}
 }
 
@@ -81,19 +82,18 @@ func TestPersonRelations_NoDB(t *testing.T) {
 	}
 }
 
-// TestPersonRename_InvalidUUID verifies 400 when UUID in path is malformed (DB path).
-// Without a real DB this hits the nil-DB guard → 503, so this tests the nil path.
-func TestPersonRename_InvalidUUID_NoDB(t *testing.T) {
+// TestPersonRename_InvalidID_NoDB verifies 400 when ID is not a valid integer (no DB path).
+func TestPersonRename_InvalidID_NoDB(t *testing.T) {
 	t.Parallel()
 
 	h := NewPersonHandler(t.TempDir(), nil)
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/persons/not-a-uuid", strings.NewReader(`{"name":"Alice"}`))
-	req.SetPathValue("id", "not-a-uuid")
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/persons/not-a-number", strings.NewReader(`{"name":"Alice"}`))
+	req.SetPathValue("id", "not-a-number")
 	rec := httptest.NewRecorder()
 	h.Rename(rec, req)
 
-	// Without DB: immediately 503 before UUID parsing.
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	// Without DB: falls through to integer parsing which fails → 400.
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 }

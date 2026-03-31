@@ -28,6 +28,7 @@ type Report struct {
 // PersonReport holds per-person metadata within a report.
 type PersonReport struct {
 	ID           int      `json:"id"`
+	CustomName   string   `json:"custom_name,omitempty"`
 	PhotoCount   int      `json:"photo_count"`
 	FaceCount    int      `json:"face_count"`
 	Thumbnail    string   `json:"thumbnail"`
@@ -77,7 +78,15 @@ func Build(params BuildParams) *Report {
 	}
 
 	for _, p := range params.Persons {
-		rpt.Persons = append(rpt.Persons, PersonReport(p))
+		rpt.Persons = append(rpt.Persons, PersonReport{
+			ID:           p.ID,
+			PhotoCount:   p.PhotoCount,
+			FaceCount:    p.FaceCount,
+			Thumbnail:    p.Thumbnail,
+			AvatarPath:   p.AvatarPath,
+			QualityScore: p.QualityScore,
+			Photos:       p.Photos,
+		})
 	}
 
 	rpt.FinishedAt = time.Now()
@@ -97,6 +106,7 @@ func Save(r *Report, outputDir string) error {
 }
 
 // Load reads and returns the report from the output directory.
+// It also merges custom names from names.json if available.
 func Load(outputDir string) (*Report, error) {
 	path := filepath.Join(outputDir, "report.json")
 	data, err := os.ReadFile(path) //nolint:gosec
@@ -107,5 +117,43 @@ func Load(outputDir string) (*Report, error) {
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, err
 	}
+
+	// Merge custom names from names.json.
+	names := LoadNames(outputDir)
+	for i := range r.Persons {
+		if name, ok := names[r.Persons[i].ID]; ok {
+			r.Persons[i].CustomName = name
+		}
+	}
+
 	return &r, nil
+}
+
+// LoadNames reads custom person names from names.json in the output directory.
+func LoadNames(outputDir string) map[int]string {
+	path := filepath.Join(outputDir, "names.json")
+	data, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		return nil
+	}
+	var names map[int]string
+	if err := json.Unmarshal(data, &names); err != nil {
+		return nil
+	}
+	return names
+}
+
+// SaveName saves a custom name for a person to names.json.
+func SaveName(outputDir string, personID int, name string) error {
+	names := LoadNames(outputDir)
+	if names == nil {
+		names = make(map[int]string)
+	}
+	names[personID] = name
+
+	data, err := json.MarshalIndent(names, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(outputDir, "names.json"), data, 0o600) //nolint:gosec
 }

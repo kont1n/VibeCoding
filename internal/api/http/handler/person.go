@@ -118,19 +118,7 @@ func (h *PersonHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Rename handles PUT /api/v1/persons/{id}.
 func (h *PersonHandler) Rename(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil || h.db.Persons == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "database required for rename operation",
-		})
-		return
-	}
-
 	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid person ID"})
-		return
-	}
 
 	var req struct {
 		Name string `json:"name"`
@@ -145,31 +133,75 @@ func (h *PersonHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize name (prevent XSS) — escape HTML entities.
 	if len(req.Name) > 200 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name too long (max 200 chars)"})
 		return
 	}
-	// Escape HTML to prevent XSS attacks.
 	sanitizedName := html.EscapeString(req.Name)
 
-	person, err := h.db.Persons.GetByID(r.Context(), id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	// Try database first.
+	if h.db != nil && h.db.Persons != nil {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid person ID"})
+			return
+		}
+
+		person, err := h.db.Persons.GetByID(r.Context(), id)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if person == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "person not found"})
+			return
+		}
+
+		person.CustomName = sanitizedName
+		if err := h.db.Persons.Update(r.Context(), person); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, person)
 		return
 	}
-	if person == nil {
+
+	// Fallback: save to names.json (no database required).
+	personID, err := strconv.Atoi(idStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid person ID"})
+		return
+	}
+
+	// Verify person exists in report.
+	rpt, err := report.Load(h.outputDir)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no data available"})
+		return
+	}
+
+	found := false
+	for _, p := range rpt.Persons {
+		if p.ID == personID {
+			found = true
+			break
+		}
+	}
+	if !found {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "person not found"})
 		return
 	}
 
-	person.CustomName = sanitizedName
-	if err := h.db.Persons.Update(r.Context(), person); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := report.SaveName(h.outputDir, personID, sanitizedName); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save name"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, person)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":          personID,
+		"custom_name": sanitizedName,
+	})
 }
 
 // Photos handles GET /api/v1/persons/{id}/photos.

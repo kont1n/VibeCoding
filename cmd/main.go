@@ -29,6 +29,7 @@ func main() {
 	// CLI флаги для переопределения .env.
 	viewOnly := flag.Bool("view", false, "only start web UI without processing")
 	serve := flag.Bool("serve", false, "start web UI after processing")
+	process := flag.Bool("process", false, "run processing pipeline from INPUT_DIR (without this flag, only web UI starts)")
 	port := flag.Int("port", 8080, "web UI port")
 	flag.Parse()
 
@@ -46,6 +47,12 @@ func main() {
 	}
 	if *port != 8080 {
 		config.AppConfig.Web.Port = *port
+	}
+
+	// По умолчанию (без флагов) запускаем только веб-UI.
+	// Обработка запускается только через --process или --serve.
+	if !*process && !*serve && !*viewOnly {
+		config.AppConfig.Web.ViewOnly = true
 	}
 
 	// Контекст с сигналом завершения.

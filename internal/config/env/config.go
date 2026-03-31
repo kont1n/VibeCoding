@@ -124,7 +124,7 @@ func NewExtractConfig() ExtractConfig {
 // NewClusterConfig создаёт конфигурацию кластеризации из ENV.
 func NewClusterConfig() ClusterConfig {
 	return ClusterConfig{
-		Threshold: getFloat("CLUSTER_THRESHOLD", 0.5),
+		Threshold: getFloat("CLUSTER_THRESHOLD", 0.35),
 	}
 }
 

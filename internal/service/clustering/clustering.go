@@ -242,9 +242,13 @@ processPairs:
 		groups[root] = append(groups[root], i)
 	}
 
-	clusters := make([]model.Cluster, 0, len(groups))
+	// Refinement: verify each face against cluster centroid.
+	// Faces with low average similarity to cluster members are split off.
+	refined := refineClusters(ctx, groups, embData, dim, threshold)
+
+	clusters := make([]model.Cluster, 0, len(refined))
 	id := 1
-	for _, indices := range groups {
+	for _, indices := range refined {
 		clusterFaces := make([]model.Face, len(indices))
 		for k, idx := range indices {
 			clusterFaces[k] = faces[idx]
@@ -257,4 +261,84 @@ processPairs:
 	}
 
 	return clusters, nil
+}
+
+// refineClusters splits outlier faces from clusters.
+// For each cluster with >2 faces, compute the centroid and remove faces
+// whose average cosine similarity to other members is below the threshold.
+func refineClusters(ctx context.Context, groups map[int][]int, embData []float64, dim int, threshold float64) [][]int {
+	// Use a slightly more lenient threshold for refinement to avoid over-splitting.
+	refineThreshold := threshold * 0.85
+
+	var result [][]int
+	for _, indices := range groups {
+		select {
+		case <-ctx.Done():
+			// On cancellation, return what we have without refinement.
+			result = append(result, indices)
+			continue
+		default:
+		}
+
+		if len(indices) <= 2 {
+			result = append(result, indices)
+			continue
+		}
+
+		// Compute centroid of the cluster.
+		centroid := make([]float64, dim)
+		for _, idx := range indices {
+			off := idx * dim
+			for d := 0; d < dim; d++ {
+				centroid[d] += embData[off+d]
+			}
+		}
+		n := float64(len(indices))
+		norm := float64(0)
+		for d := 0; d < dim; d++ {
+			centroid[d] /= n
+			norm += centroid[d] * centroid[d]
+		}
+		norm = math.Sqrt(norm)
+		if norm > 0 {
+			for d := 0; d < dim; d++ {
+				centroid[d] /= norm
+			}
+		}
+
+		// Check each face's similarity to centroid.
+		var keep, outliers []int
+		for _, idx := range indices {
+			sim := dotProduct(embData, idx*dim, centroid, dim)
+			if sim >= refineThreshold {
+				keep = append(keep, idx)
+			} else {
+				outliers = append(outliers, idx)
+			}
+		}
+
+		if len(keep) == 0 {
+			// All faces are outliers — keep original cluster.
+			result = append(result, indices)
+			continue
+		}
+
+		result = append(result, keep)
+
+		// Each outlier becomes its own singleton cluster.
+		for _, idx := range outliers {
+			result = append(result, []int{idx})
+		}
+	}
+
+	return result
+}
+
+// dotProduct computes dot product between embedding at offset and a vector.
+func dotProduct(embData []float64, offset int, vec []float64, dim int) float64 {
+	sum := float64(0)
+	for d := 0; d < dim; d++ {
+		sum += embData[offset+d] * vec[d]
+	}
+	return sum
 }
