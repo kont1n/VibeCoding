@@ -249,6 +249,13 @@ func (w *statusWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+// Flush preserves streaming support (SSE, chunked responses) through middleware wrappers.
+func (w *statusWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // EndpointRateLimit defines rate limit configuration for a specific endpoint pattern.
 type EndpointRateLimit struct {
 	Pattern string  // URL pattern (e.g., "/api/v1/upload", "/health").

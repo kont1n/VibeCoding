@@ -44,6 +44,48 @@ type extractionService struct {
 	recPool      []ml.RecognizerGateway
 }
 
+type thumbnailTask struct {
+	image *imageutil.Image
+	path  string
+}
+
+type thumbnailWriter struct {
+	tasks chan thumbnailTask
+	wg    sync.WaitGroup
+}
+
+func newThumbnailWriter(workers int) *thumbnailWriter {
+	if workers <= 0 {
+		workers = 1
+	}
+	w := &thumbnailWriter{
+		tasks: make(chan thumbnailTask, workers*2),
+	}
+	for i := 0; i < workers; i++ {
+		w.wg.Add(1)
+		go func() {
+			defer w.wg.Done()
+			for task := range w.tasks {
+				_ = imageutil.SaveJPEG(task.image, task.path, 90)
+				task.image.Close()
+			}
+		}()
+	}
+	return w
+}
+
+func (w *thumbnailWriter) Submit(img *imageutil.Image, path string) {
+	if img == nil || path == "" {
+		return
+	}
+	w.tasks <- thumbnailTask{image: img, path: path}
+}
+
+func (w *thumbnailWriter) Close() {
+	close(w.tasks)
+	w.wg.Wait()
+}
+
 // NewExtractionService создаёт новый экземпляр сервиса экстракции.
 func NewExtractionService(
 	cfg env.ExtractConfig,
@@ -112,6 +154,12 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	recBatcher := newRecognizerBatcher(recPool, workers, embedBatchSize, embedFlush)
 	defer recBatcher.Close()
 
+	var tw *thumbnailWriter
+	if thumbDir != "" {
+		tw = newThumbnailWriter(workers)
+		defer tw.Close()
+	}
+
 	// Semaphore for concurrency limiting.
 	sem := make(chan struct{}, workers)
 
@@ -119,8 +167,9 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	g, ctx := errgroup.WithContext(ctx)
 
 	var mu sync.Mutex
-	processed := 0
+	var processed atomic.Int64
 	total := len(files)
+	const successLogStep = 10
 
 	for _, f := range files {
 		g.Go(func() error {
@@ -132,26 +181,31 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 			}
 			defer func() { <-sem }()
 
-			faces, err := s.processImage(ctx, f, detPool, recBatcher, recSize, thumbDir)
+			faces, err := s.processImage(ctx, f, detPool, recBatcher, recSize, thumbDir, tw)
 
-			mu.Lock()
-			processed++
+			current := int(processed.Add(1))
 			if onProgress != nil {
-				onProgress(processed, total, f)
+				onProgress(current, total, f)
 			}
+
 			if err != nil {
-				_, _ = fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, f, err)
+				_, _ = fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", current, total, f, err)
 				logger.Error(ctx, "file processing error",
 					zap.String("path", f),
 					zap.Error(err),
 				)
+				mu.Lock()
 				res.FileErrors[f] = err.Error()
 				res.ErrorCount++
+				mu.Unlock()
 			} else {
-				_, _ = fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", processed, total, f, len(faces))
+				if current%successLogStep == 0 || current == total {
+					_, _ = fmt.Fprintf(w, "[%d/%d] %s — found %d face(s)\n", current, total, f, len(faces))
+				}
+				mu.Lock()
 				res.Faces = append(res.Faces, faces...)
+				mu.Unlock()
 			}
-			mu.Unlock()
 
 			return nil // Don't stop processing on single file error.
 		})
@@ -177,6 +231,7 @@ func (s *extractionService) processImage(
 	recBatcher *recognizerBatcher,
 	recSize int,
 	thumbDir string,
+	tw *thumbnailWriter,
 ) ([]model.Face, error) {
 	// Check for cancellation before expensive I/O.
 	if err := ctx.Err(); err != nil {
@@ -250,7 +305,16 @@ func (s *extractionService) processImage(
 	for i, d := range dets {
 		thumb := ""
 		if thumbDir != "" {
-			thumb = s.saveThumbnail(img, d, imagePath, i, thumbDir)
+			thumb = s.thumbnailPath(imagePath, i, thumbDir)
+			if tw != nil {
+				if thumbImage := s.prepareThumbnailImage(img, d); thumbImage != nil {
+					tw.Submit(thumbImage, thumb)
+				} else {
+					thumb = ""
+				}
+			} else {
+				thumb = s.saveThumbnail(img, d, imagePath, i, thumbDir)
+			}
 		}
 
 		var keypoints [5][2]float64
@@ -276,6 +340,44 @@ func (s *extractionService) processImage(
 	}
 
 	return faces, nil
+}
+
+func (s *extractionService) thumbnailPath(imagePath string, faceIdx int, thumbDir string) string {
+	base := filepath.Base(imagePath)
+	ext := filepath.Ext(base)
+	name := base[:len(base)-len(ext)]
+	thumbName := fmt.Sprintf("%s_%s_face_%d.jpg", name, shortPathHash(imagePath), faceIdx)
+	return filepath.Join(thumbDir, thumbName)
+}
+
+func (s *extractionService) prepareThumbnailImage(img *imageutil.Image, det ml.Detection) *imageutil.Image {
+	h := img.Height
+	w := img.Width
+
+	x1 := int(det.X1)
+	y1 := int(det.Y1)
+	x2 := int(det.X2)
+	y2 := int(det.Y2)
+
+	padX := int(float64(x2-x1) * 0.25)
+	padY := int(float64(y2-y1) * 0.25)
+
+	cx1 := max(0, x1-padX)
+	cy1 := max(0, y1-padY)
+	cx2 := min(w, x2+padX)
+	cy2 := min(h, y2+padY)
+
+	if cx2 <= cx1 || cy2 <= cy1 {
+		return nil
+	}
+
+	crop := img.Region(image.Rect(cx1, cy1, cx2, cy2))
+	if crop == nil {
+		return nil
+	}
+	defer crop.Close()
+
+	return imageutil.Resize(crop, 160, 160)
 }
 
 func (s *extractionService) saveThumbnail(img *imageutil.Image, det ml.Detection, imagePath string, faceIdx int, thumbDir string) string {
@@ -308,11 +410,7 @@ func (s *extractionService) saveThumbnail(img *imageutil.Image, det ml.Detection
 	resized := imageutil.Resize(crop, 160, 160)
 	defer resized.Close()
 
-	base := filepath.Base(imagePath)
-	ext := filepath.Ext(base)
-	name := base[:len(base)-len(ext)]
-	thumbName := fmt.Sprintf("%s_%s_face_%d.jpg", name, shortPathHash(imagePath), faceIdx)
-	thumbPath := filepath.Join(thumbDir, thumbName)
+	thumbPath := s.thumbnailPath(imagePath, faceIdx, thumbDir)
 
 	if err := imageutil.SaveJPEG(resized, thumbPath, 90); err != nil {
 		return ""

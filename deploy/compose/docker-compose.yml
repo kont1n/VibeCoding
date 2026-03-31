@@ -110,7 +110,10 @@ services:
       - GPU_ENABLED=0
       - FORCE_CPU=1
       - PROVIDER_PRIORITY=cpu
-      - EXTRACT_WORKERS=4
+      - EXTRACT_WORKERS=10
+      - EMBED_BATCH_SIZE=192
+      - EMBED_FLUSH_MS=5
+      - MAX_DIM=1280
       - LOG_LEVEL=info
       - LOG_JSON=false
       - WEB_SERVE=true
@@ -123,10 +126,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 4G
+          cpus: '8.0'
+          memory: 6G
         reservations:
-          cpus: '2.0'
+          cpus: '4.0'
           memory: 2G
     
     # Health check
