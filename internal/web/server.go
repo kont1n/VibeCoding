@@ -4,7 +4,6 @@ package web
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kont1n/face-grouper/internal/api/http/handler"
+	api "github.com/kont1n/face-grouper/internal/api/http/handler"
 	"github.com/kont1n/face-grouper/internal/api/http/middleware"
 	"github.com/kont1n/face-grouper/internal/repository/database"
 )
@@ -37,21 +36,21 @@ type Server struct {
 	handler http.Handler
 
 	// Handlers.
-	uploadHandler  *handler.UploadHandler
-	sessionHandler *handler.SessionHandler
-	personHandler  *handler.PersonHandler
-	errorHandler   *handler.ErrorHandler
-	healthHandler  *handler.HealthHandler
+	uploadHandler  *api.UploadHandler
+	sessionHandler *api.SessionHandler
+	personHandler  *api.PersonHandler
+	errorHandler   *api.ErrorHandler
+	healthHandler  *api.HealthHandler
 
 	// Pipeline runner for async processing.
-	pipelineRunner handler.PipelineRunner
+	pipelineRunner api.PipelineRunner
 
 	// stopCh signals background goroutines (e.g. rate limiter cleanup) to stop.
 	stopCh chan struct{}
 }
 
 // NewServer creates and configures a new HTTP server.
-func NewServer(cfg ServerConfig, pipelineRunner handler.PipelineRunner) *Server {
+func NewServer(cfg ServerConfig, pipelineRunner api.PipelineRunner) *Server {
 	s := &Server{
 		cfg:            cfg,
 		mux:            http.NewServeMux(),
@@ -67,21 +66,21 @@ func NewServer(cfg ServerConfig, pipelineRunner handler.PipelineRunner) *Server 
 }
 
 func (s *Server) initHandlers() {
-	var healthChecker handler.HealthChecker
+	var healthChecker api.HealthChecker
 	if s.cfg.DB != nil {
 		healthChecker = s.cfg.DB.Pool
 	}
-	s.healthHandler = handler.NewHealthHandler(healthChecker, "1.0.0")
+	s.healthHandler = api.NewHealthHandler(healthChecker, "1.0.0")
 
 	uploadDir := s.cfg.UploadDir
 	if uploadDir == "" {
 		uploadDir = filepath.Join(s.cfg.OutputDir, ".uploads")
 	}
 
-	s.uploadHandler = handler.NewUploadHandler(uploadDir, 500<<20) // 500MB max.
-	s.sessionHandler = handler.NewSessionHandler(s.pipelineRunner, uploadDir)
-	s.personHandler = handler.NewPersonHandler(s.cfg.OutputDir, s.cfg.DB)
-	s.errorHandler = handler.NewErrorHandler(s.cfg.OutputDir, s.cfg.DB)
+	s.uploadHandler = api.NewUploadHandler(uploadDir, 500<<20) // 500MB max.
+	s.sessionHandler = api.NewSessionHandler(s.pipelineRunner, uploadDir)
+	s.personHandler = api.NewPersonHandler(s.cfg.OutputDir, s.cfg.DB)
+	s.errorHandler = api.NewErrorHandler(s.cfg.OutputDir, s.cfg.DB)
 }
 
 func (s *Server) registerRoutes() {
@@ -208,7 +207,7 @@ func (s *Server) serveReport(w http.ResponseWriter, r *http.Request) {
 	reportPath := filepath.Join(s.cfg.OutputDir, "report.json")
 	data, err := os.ReadFile(reportPath) //nolint:gosec
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "report not found"})
+		api.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "report not found"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -262,10 +261,4 @@ func (s *Server) ListenAndServeContext(ctx context.Context) error {
 
 	log.Printf("Server stopped")
 	return nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

@@ -25,7 +25,7 @@ func NewClusterService() ClusterService {
 
 // Cluster groups faces using cosine similarity.
 func (s *clusterService) Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error) {
-	return Cluster(faces, threshold), nil
+	return Cluster(ctx, faces, threshold)
 }
 
 type unionFind struct {
@@ -72,15 +72,15 @@ const blockSize = 512
 
 // Cluster groups faces using BLAS-accelerated matrix multiplication for similarity.
 // Applies L2-normalization to embeddings to ensure dot product = cosine similarity.
-func Cluster(faces []model.Face, threshold float64) []model.Cluster {
+func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error) {
 	n := len(faces)
 	if n == 0 {
-		return nil
+		return nil, nil
 	}
 
 	dim := len(faces[0].Embedding)
 	if dim == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// L2-normalize embeddings (defensive, even if recognizer already normalized).
@@ -101,6 +101,12 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 		}
 	}
 
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	E := mat.NewDense(n, dim, embData)
 	uf := newUnionFind(n)
 
@@ -113,6 +119,12 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 		defer close(pairs)
 
 		for iStart := 0; iStart < n; iStart += blockSize {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			iEnd := iStart + blockSize
 			if iEnd > n {
 				iEnd = n
@@ -178,5 +190,5 @@ func Cluster(faces []model.Face, threshold float64) []model.Cluster {
 		id++
 	}
 
-	return clusters
+	return clusters, nil
 }

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kont1n/face-grouper/internal/config"
+	"github.com/kont1n/face-grouper/internal/config/env"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/repository/database"
@@ -25,6 +26,28 @@ import (
 )
 
 const providerPriorityAuto = "auto"
+
+// buildProviderConfig builds a unified provider configuration from extraction config.
+func buildProviderConfig(cfg env.ExtractConfig, logSelection bool) ml.ProviderConfig {
+	// Determine preferred provider type.
+	var preferred provider.ProviderType
+	if cfg.GPU {
+		preferred = provider.ProviderCUDA
+		if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
+			preferred = provider.ParseProviderType(cfg.ProviderPriority)
+		}
+	} else {
+		preferred = provider.ProviderCPU
+	}
+
+	return ml.ProviderConfig{
+		Preferred:     preferred,
+		ForceCPU:      cfg.ForceCPU,
+		DeviceID:      cfg.GPUDeviceID,
+		AllowFallback: true,
+		LogSelection:  logSelection,
+	}
+}
 
 // App представляет основное приложение.
 type App struct {
@@ -141,24 +164,7 @@ func (a *App) runProcess(ctx context.Context) error {
 	// Select and initialize ONNX Runtime provider.
 	cfg := config.AppConfig.Extract
 
-	// Determine preferred provider type.
-	var preferred provider.ProviderType
-	if cfg.GPU {
-		preferred = provider.ProviderCUDA // Default to CUDA for GPU.
-		if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
-			preferred = provider.ParseProviderType(cfg.ProviderPriority)
-		}
-	} else {
-		preferred = provider.ProviderCPU
-	}
-
-	providerCfg := ml.ProviderConfig{
-		Preferred:     preferred,
-		ForceCPU:      cfg.ForceCPU,
-		DeviceID:      cfg.GPUDeviceID,
-		AllowFallback: true,
-		LogSelection:  true,
-	}
+	providerCfg := buildProviderConfig(cfg, true)
 
 	// Determine library path.
 	var ortLibPath string

@@ -9,7 +9,6 @@ import (
 	"github.com/kont1n/face-grouper/internal/api/cli"
 	"github.com/kont1n/face-grouper/internal/config"
 	"github.com/kont1n/face-grouper/internal/infrastructure/ml"
-	"github.com/kont1n/face-grouper/internal/infrastructure/ml/provider"
 	"github.com/kont1n/face-grouper/internal/repository/database"
 	"github.com/kont1n/face-grouper/internal/repository/filesystem"
 	"github.com/kont1n/face-grouper/internal/repository/postgres"
@@ -150,23 +149,7 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorGatew
 		cfg := d.cfg.Extract
 		modelsDir := d.cfg.Models.Dir
 
-		// Determine preferred provider type.
-		var preferred provider.ProviderType
-		if cfg.GPU {
-			preferred = provider.ProviderCUDA
-			if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
-				preferred = provider.ParseProviderType(cfg.ProviderPriority)
-			}
-		} else {
-			preferred = provider.ProviderCPU
-		}
-
-		providerCfg := ml.ProviderConfig{
-			Preferred:     preferred,
-			ForceCPU:      cfg.ForceCPU,
-			DeviceID:      cfg.GPUDeviceID,
-			AllowFallback: true,
-		}
+		providerCfg := buildProviderConfig(cfg, false)
 
 		sessions := cfg.Workers
 		if cfg.GPU && !cfg.ForceCPU {
@@ -226,23 +209,7 @@ func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerG
 		cfg := d.cfg.Extract
 		modelsDir := d.cfg.Models.Dir
 
-		// Determine preferred provider type.
-		var preferred provider.ProviderType
-		if cfg.GPU {
-			preferred = provider.ProviderCUDA
-			if cfg.ProviderPriority != "" && cfg.ProviderPriority != providerPriorityAuto {
-				preferred = provider.ParseProviderType(cfg.ProviderPriority)
-			}
-		} else {
-			preferred = provider.ProviderCPU
-		}
-
-		providerCfg := ml.ProviderConfig{
-			Preferred:     preferred,
-			ForceCPU:      cfg.ForceCPU,
-			DeviceID:      cfg.GPUDeviceID,
-			AllowFallback: true,
-		}
+		providerCfg := buildProviderConfig(cfg, false)
 
 		sessions := cfg.Workers
 		if cfg.GPU && !cfg.ForceCPU {

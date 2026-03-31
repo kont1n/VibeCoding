@@ -1,6 +1,7 @@
 package clustering
 
 import (
+	"context"
 	"math"
 	"math/rand"
 	"sort"
@@ -19,7 +20,10 @@ func TestClusterGroupsSimilarFaces(t *testing.T) {
 		{Embedding: []float32{-0.98, -0.02, 0.0}},
 	}
 
-	clusters := Cluster(faces, 0.95)
+	clusters, err := Cluster(context.Background(), faces, 0.95)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
 	if len(clusters) != 2 {
 		t.Fatalf("expected 2 clusters, got %d", len(clusters))
 	}
@@ -44,7 +48,10 @@ func TestClusterAppliesTransitiveMerging(t *testing.T) {
 		{Embedding: []float32{0.28, 0.96}},
 	}
 
-	clusters := Cluster(faces, 0.75)
+	clusters, err := Cluster(context.Background(), faces, 0.75)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
 	if len(clusters) != 1 {
 		t.Fatalf("expected 1 transitive cluster, got %d", len(clusters))
 	}
@@ -56,7 +63,11 @@ func TestClusterAppliesTransitiveMerging(t *testing.T) {
 func TestClusterHandlesEmptyInput(t *testing.T) {
 	t.Parallel()
 
-	if got := Cluster(nil, 0.5); got != nil {
+	got, err := Cluster(context.Background(), nil, 0.5)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
+	if got != nil {
 		t.Fatalf("expected nil for empty input, got %v", got)
 	}
 }
@@ -65,8 +76,29 @@ func TestClusterHandlesZeroDimensionEmbeddings(t *testing.T) {
 	t.Parallel()
 
 	faces := []model.Face{{Embedding: nil}, {Embedding: nil}}
-	if got := Cluster(faces, 0.5); got != nil {
+	got, err := Cluster(context.Background(), faces, 0.5)
+	if err != nil {
+		t.Fatalf("Cluster returned error: %v", err)
+	}
+	if got != nil {
 		t.Fatalf("expected nil for zero-dimension embeddings, got %v", got)
+	}
+}
+
+func TestClusterRespectsContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	faces := makeRandomFaces(512, 256)
+
+	clusters, err := Cluster(ctx, faces, 0.5)
+	if err == nil {
+		t.Fatalf("expected context error, got nil")
+	}
+	if clusters != nil {
+		t.Fatalf("expected nil clusters on context cancellation, got %v", clusters)
 	}
 }
 
@@ -74,7 +106,7 @@ func BenchmarkCluster512D(b *testing.B) {
 	embeddings := makeRandomFaces(1200, 512)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Cluster(embeddings, 0.5)
+		_, _ = Cluster(context.Background(), embeddings, 0.5)
 	}
 }
 

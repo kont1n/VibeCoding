@@ -2,7 +2,6 @@ package handler
 
 import (
 	"archive/zip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -275,8 +274,3 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 	return files, totalSize, nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
