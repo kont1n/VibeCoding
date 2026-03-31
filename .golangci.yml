@@ -8,11 +8,6 @@ run:
   tests: true
   modules-download-mode: readonly
 
-output:
-  formats:
-    colored-tab:
-      path: stdout
-
 linters:
   default: none
   enable:
