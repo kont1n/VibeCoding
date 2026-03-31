@@ -12,18 +12,18 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
-// PersonRepository provides database operations for persons.
-type PersonRepository struct {
+// PersonRepositoryImpl implements PersonRepository interface.
+type PersonRepositoryImpl struct {
 	pool *pgxpool.Pool
 }
 
 // NewPersonRepository creates a new person repository.
-func NewPersonRepository(pool *pgxpool.Pool) *PersonRepository {
-	return &PersonRepository{pool: pool}
+func NewPersonRepository(pool *pgxpool.Pool) *PersonRepositoryImpl {
+	return &PersonRepositoryImpl{pool: pool}
 }
 
 // Create creates a new person.
-func (r *PersonRepository) Create(ctx context.Context, person *model.Person) error {
+func (r *PersonRepositoryImpl) Create(ctx context.Context, person *model.Person) error {
 	query := `
 		INSERT INTO persons (id, name, custom_name, avatar_path, avatar_thumbnail_path, 
 		                     quality_score, face_count, photo_count, metadata, created_at, updated_at)
@@ -52,7 +52,7 @@ func (r *PersonRepository) Create(ctx context.Context, person *model.Person) err
 }
 
 // GetByID returns a person by ID.
-func (r *PersonRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Person, error) {
+func (r *PersonRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*model.Person, error) {
 	query := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
 		       quality_score, face_count, photo_count, metadata, created_at, updated_at
@@ -83,7 +83,7 @@ func (r *PersonRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Pe
 }
 
 // GetAll returns all persons.
-func (r *PersonRepository) GetAll(ctx context.Context) ([]*model.Person, error) {
+func (r *PersonRepositoryImpl) GetAll(ctx context.Context) ([]*model.Person, error) {
 	query := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
 		       quality_score, face_count, photo_count, metadata, created_at, updated_at
@@ -127,7 +127,7 @@ func (r *PersonRepository) GetAll(ctx context.Context) ([]*model.Person, error) 
 }
 
 // Update updates a person.
-func (r *PersonRepository) Update(ctx context.Context, person *model.Person) error {
+func (r *PersonRepositoryImpl) Update(ctx context.Context, person *model.Person) error {
 	query := `
 		UPDATE persons
 		SET name = $2, custom_name = $3, avatar_path = $4, avatar_thumbnail_path = $5,
@@ -156,7 +156,7 @@ func (r *PersonRepository) Update(ctx context.Context, person *model.Person) err
 }
 
 // UpdateName updates person's custom name.
-func (r *PersonRepository) UpdateName(ctx context.Context, id uuid.UUID, customName string) error {
+func (r *PersonRepositoryImpl) UpdateName(ctx context.Context, id uuid.UUID, customName string) error {
 	query := `
 		UPDATE persons
 		SET custom_name = $2, updated_at = $3
@@ -172,7 +172,7 @@ func (r *PersonRepository) UpdateName(ctx context.Context, id uuid.UUID, customN
 }
 
 // IncrementFaceCount increments face count for a person.
-func (r *PersonRepository) IncrementFaceCount(ctx context.Context, id uuid.UUID) error {
+func (r *PersonRepositoryImpl) IncrementFaceCount(ctx context.Context, id uuid.UUID) error {
 	query := `
 		UPDATE persons
 		SET face_count = face_count + 1, updated_at = $2
@@ -188,7 +188,7 @@ func (r *PersonRepository) IncrementFaceCount(ctx context.Context, id uuid.UUID)
 }
 
 // IncrementPhotoCount increments photo count for a person.
-func (r *PersonRepository) IncrementPhotoCount(ctx context.Context, id uuid.UUID) error {
+func (r *PersonRepositoryImpl) IncrementPhotoCount(ctx context.Context, id uuid.UUID) error {
 	query := `
 		UPDATE persons
 		SET photo_count = photo_count + 1, updated_at = $2
@@ -204,7 +204,7 @@ func (r *PersonRepository) IncrementPhotoCount(ctx context.Context, id uuid.UUID
 }
 
 // Delete deletes a person.
-func (r *PersonRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *PersonRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM persons WHERE id = $1`
 
 	_, err := r.pool.Exec(ctx, query, id)
@@ -216,7 +216,7 @@ func (r *PersonRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // Search searches for persons by name.
-func (r *PersonRepository) Search(ctx context.Context, query string) ([]*model.Person, error) {
+func (r *PersonRepositoryImpl) Search(ctx context.Context, query string) ([]*model.Person, error) {
 	sql := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
 		       quality_score, face_count, photo_count, metadata, created_at, updated_at
@@ -261,7 +261,7 @@ func (r *PersonRepository) Search(ctx context.Context, query string) ([]*model.P
 }
 
 // List returns a paginated list of persons.
-func (r *PersonRepository) List(ctx context.Context, offset, limit int) ([]*model.Person, error) {
+func (r *PersonRepositoryImpl) List(ctx context.Context, offset, limit int) ([]*model.Person, error) {
 	query := `
 		SELECT id, name, custom_name, avatar_path, avatar_thumbnail_path, 
 		       quality_score, face_count, photo_count, metadata, created_at, updated_at
@@ -306,7 +306,7 @@ func (r *PersonRepository) List(ctx context.Context, offset, limit int) ([]*mode
 }
 
 // Count returns the total number of persons.
-func (r *PersonRepository) Count(ctx context.Context) (int, error) {
+func (r *PersonRepositoryImpl) Count(ctx context.Context) (int, error) {
 	query := `SELECT COUNT(*) FROM persons`
 
 	var count int

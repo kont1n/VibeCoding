@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	pkgerrors "github.com/kont1n/face-grouper/internal/pkg/errors"
 	"github.com/kont1n/face-grouper/internal/service/imageutil"
 )
 
@@ -59,9 +60,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxSize)
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "failed to parse upload: " + err.Error(),
-		})
+		WriteError(w, pkgerrors.NewValidation("Failed to parse upload: "+err.Error()))
 		return
 	}
 
@@ -69,9 +68,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	sessionDir := filepath.Join(h.uploadDir, sessionID)
 
 	if err := os.MkdirAll(sessionDir, 0o750); err != nil { //nolint:gosec
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to create upload directory",
-		})
+		WriteError(w, pkgerrors.NewInternal("Failed to create upload directory", err))
 		return
 	}
 
@@ -81,9 +78,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
 		_ = os.RemoveAll(sessionDir)
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "no files provided",
-		})
+		WriteError(w, pkgerrors.NewFileUpload("No files provided"))
 		return
 	}
 
@@ -95,9 +90,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			extracted, size, err := h.handleZip(fileHeader, sessionDir)
 			if err != nil {
 				_ = os.RemoveAll(sessionDir)
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": "failed to process zip: " + err.Error(),
-				})
+				WriteError(w, pkgerrors.NewFileUpload("Failed to process zip: "+err.Error()))
 				return
 			}
 			savedFiles = append(savedFiles, extracted...)
@@ -145,7 +138,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			src, _ = fileHeader.Open()
 		}
 
-		dst, err := os.Create(dstPath) //nolint:gosec
+		dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
 		if err != nil {
 			_ = src.Close()
 			continue
@@ -166,9 +159,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	if len(savedFiles) == 0 {
 		_ = os.RemoveAll(sessionDir)
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "no valid image files found in upload",
-		})
+		WriteError(w, pkgerrors.NewFileUpload("No valid image files found in upload"))
 		return
 	}
 
@@ -251,7 +242,7 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 		_ = rc.Close()
 		rc, _ = f.Open()
 
-		dst, createErr := os.Create(destPath) //nolint:gosec
+		dst, createErr := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
 		if createErr != nil {
 			_ = rc.Close()
 			continue
@@ -273,4 +264,3 @@ func (h *UploadHandler) handleZip(fileHeader *multipart.FileHeader, sessionDir s
 
 	return files, totalSize, nil
 }
-

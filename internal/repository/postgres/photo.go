@@ -11,18 +11,18 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
-// PhotoRepository provides database operations for photos.
-type PhotoRepository struct {
+// PhotoRepositoryImpl implements PhotoRepository interface.
+type PhotoRepositoryImpl struct {
 	pool *pgxpool.Pool
 }
 
 // NewPhotoRepository creates a new photo repository.
-func NewPhotoRepository(pool *pgxpool.Pool) *PhotoRepository {
-	return &PhotoRepository{pool: pool}
+func NewPhotoRepository(pool *pgxpool.Pool) *PhotoRepositoryImpl {
+	return &PhotoRepositoryImpl{pool: pool}
 }
 
 // Create creates a new photo.
-func (r *PhotoRepository) Create(ctx context.Context, photo *model.Photo) error {
+func (r *PhotoRepositoryImpl) Create(ctx context.Context, photo *model.Photo) error {
 	query := `
 		INSERT INTO photos (id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -48,7 +48,7 @@ func (r *PhotoRepository) Create(ctx context.Context, photo *model.Photo) error 
 }
 
 // CreateBatch creates multiple photos in a single transaction.
-func (r *PhotoRepository) CreateBatch(ctx context.Context, photos []*model.Photo) error {
+func (r *PhotoRepositoryImpl) CreateBatch(ctx context.Context, photos []*model.Photo) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -85,7 +85,7 @@ func (r *PhotoRepository) CreateBatch(ctx context.Context, photos []*model.Photo
 }
 
 // GetByID returns a photo by ID.
-func (r *PhotoRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Photo, error) {
+func (r *PhotoRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*model.Photo, error) {
 	query := `
 		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
 		FROM photos
@@ -113,7 +113,7 @@ func (r *PhotoRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Pho
 }
 
 // GetByPath returns a photo by path.
-func (r *PhotoRepository) GetByPath(ctx context.Context, path string) (*model.Photo, error) {
+func (r *PhotoRepositoryImpl) GetByPath(ctx context.Context, path string) (*model.Photo, error) {
 	query := `
 		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
 		FROM photos
@@ -141,7 +141,7 @@ func (r *PhotoRepository) GetByPath(ctx context.Context, path string) (*model.Ph
 }
 
 // GetAll returns all photos.
-func (r *PhotoRepository) GetAll(ctx context.Context) ([]*model.Photo, error) {
+func (r *PhotoRepositoryImpl) GetAll(ctx context.Context) ([]*model.Photo, error) {
 	query := `
 		SELECT id, path, original_path, width, height, file_size, mime_type, metadata, uploaded_at
 		FROM photos
@@ -182,7 +182,7 @@ func (r *PhotoRepository) GetAll(ctx context.Context) ([]*model.Photo, error) {
 }
 
 // GetByPersonID returns all photos for a person.
-func (r *PhotoRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Photo, error) {
+func (r *PhotoRepositoryImpl) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Photo, error) {
 	query := `
 		SELECT DISTINCT p.id, p.path, p.original_path, p.width, p.height, p.file_size, p.mime_type, p.metadata, p.uploaded_at
 		FROM photos p
@@ -225,7 +225,7 @@ func (r *PhotoRepository) GetByPersonID(ctx context.Context, personID uuid.UUID)
 }
 
 // Update updates a photo.
-func (r *PhotoRepository) Update(ctx context.Context, photo *model.Photo) error {
+func (r *PhotoRepositoryImpl) Update(ctx context.Context, photo *model.Photo) error {
 	query := `
 		UPDATE photos
 		SET path = $2, original_path = $3, width = $4, height = $5, file_size = $6,
@@ -252,7 +252,7 @@ func (r *PhotoRepository) Update(ctx context.Context, photo *model.Photo) error 
 }
 
 // Delete deletes a photo.
-func (r *PhotoRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *PhotoRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM photos WHERE id = $1`
 
 	_, err := r.pool.Exec(ctx, query, id)
@@ -264,7 +264,7 @@ func (r *PhotoRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // Exists checks if a photo exists by path.
-func (r *PhotoRepository) Exists(ctx context.Context, path string) (bool, error) {
+func (r *PhotoRepositoryImpl) Exists(ctx context.Context, path string) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM photos WHERE path = $1)`
 
 	var exists bool
@@ -277,7 +277,7 @@ func (r *PhotoRepository) Exists(ctx context.Context, path string) (bool, error)
 }
 
 // ListByPerson returns all photos for a person with pagination.
-func (r *PhotoRepository) ListByPerson(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.Photo, error) {
+func (r *PhotoRepositoryImpl) ListByPerson(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.Photo, error) {
 	query := `
 		SELECT DISTINCT p.id, p.path, p.original_path, p.width, p.height, p.file_size, p.mime_type, p.metadata, p.uploaded_at
 		FROM photos p
@@ -321,7 +321,7 @@ func (r *PhotoRepository) ListByPerson(ctx context.Context, personID uuid.UUID, 
 }
 
 // CountByPerson returns the number of photos for a person.
-func (r *PhotoRepository) CountByPerson(ctx context.Context, personID uuid.UUID) (int, error) {
+func (r *PhotoRepositoryImpl) CountByPerson(ctx context.Context, personID uuid.UUID) (int, error) {
 	query := `
 		SELECT COUNT(DISTINCT p.id)
 		FROM photos p

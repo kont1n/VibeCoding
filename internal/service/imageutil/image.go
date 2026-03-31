@@ -122,7 +122,7 @@ func SaveImage(img *Image, path string, quality int) error {
 		}
 	}
 
-	f, err := os.Create(path) //nolint:gosec
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
 	if err != nil {
 		return err
 	}

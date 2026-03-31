@@ -13,18 +13,18 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
-// SessionRepository provides database operations for processing sessions.
-type SessionRepository struct {
+// SessionRepositoryImpl implements SessionRepository interface.
+type SessionRepositoryImpl struct {
 	pool *pgxpool.Pool
 }
 
 // NewSessionRepository creates a new session repository.
-func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
-	return &SessionRepository{pool: pool}
+func NewSessionRepository(pool *pgxpool.Pool) *SessionRepositoryImpl {
+	return &SessionRepositoryImpl{pool: pool}
 }
 
 // Create creates a new processing session.
-func (r *SessionRepository) Create(ctx context.Context, session *model.ProcessingSession) error {
+func (r *SessionRepositoryImpl) Create(ctx context.Context, session *model.ProcessingSession) error {
 	query := `
 		INSERT INTO processing_sessions (id, status, stage, progress, total_items, processed_items,
 		                                  errors, error_details, config, started_at, completed_at, created_by)
@@ -63,7 +63,7 @@ func (r *SessionRepository) Create(ctx context.Context, session *model.Processin
 }
 
 // GetByID returns a session by ID.
-func (r *SessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.ProcessingSession, error) {
+func (r *SessionRepositoryImpl) GetByID(ctx context.Context, id string) (*model.ProcessingSession, error) {
 	query := `
 		SELECT id, status, stage, progress, total_items, processed_items, errors,
 		       error_details, config, started_at, completed_at, created_by
@@ -103,7 +103,7 @@ func (r *SessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 }
 
 // GetAll returns all sessions.
-func (r *SessionRepository) GetAll(ctx context.Context) ([]*model.ProcessingSession, error) {
+func (r *SessionRepositoryImpl) GetAll(ctx context.Context) ([]*model.ProcessingSession, error) {
 	query := `
 		SELECT id, status, stage, progress, total_items, processed_items, errors,
 		       error_details, config, started_at, completed_at, created_by
@@ -154,8 +154,46 @@ func (r *SessionRepository) GetAll(ctx context.Context) ([]*model.ProcessingSess
 	return sessions, nil
 }
 
+// Update updates a processing session.
+func (r *SessionRepositoryImpl) Update(ctx context.Context, session *model.ProcessingSession) error {
+	query := `
+		UPDATE processing_sessions
+		SET status = $2, stage = $3, progress = $4, total_items = $5,
+		    processed_items = $6, errors = $7, error_details = $8,
+		    config = $9, completed_at = $10
+		WHERE id = $1
+	`
+
+	var errorDetails json.RawMessage
+	if len(session.ErrorDetails) > 0 {
+		var err error
+		errorDetails, err = json.Marshal(session.ErrorDetails)
+		if err != nil {
+			return fmt.Errorf("marshal error details: %w", err)
+		}
+	}
+
+	_, err := r.pool.Exec(ctx, query,
+		session.ID,
+		session.Status,
+		session.Stage,
+		session.Progress,
+		session.TotalItems,
+		session.ProcessedItems,
+		session.Errors,
+		errorDetails,
+		session.Config,
+		session.CompletedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("update session: %w", err)
+	}
+
+	return nil
+}
+
 // UpdateStatus updates session status and progress.
-func (r *SessionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status, stage string, progress float32, processedItems int) error {
+func (r *SessionRepositoryImpl) UpdateStatus(ctx context.Context, id uuid.UUID, status, stage string, progress float32, processedItems int) error {
 	query := `
 		UPDATE processing_sessions
 		SET status = $2, stage = $3, progress = $4, processed_items = $5
@@ -171,7 +209,7 @@ func (r *SessionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, stat
 }
 
 // Complete marks a session as completed.
-func (r *SessionRepository) Complete(ctx context.Context, id uuid.UUID) error {
+func (r *SessionRepositoryImpl) Complete(ctx context.Context, id uuid.UUID) error {
 	query := `
 		UPDATE processing_sessions
 		SET status = 'completed', completed_at = $2
@@ -187,7 +225,7 @@ func (r *SessionRepository) Complete(ctx context.Context, id uuid.UUID) error {
 }
 
 // Fail marks a session as failed with errors.
-func (r *SessionRepository) Fail(ctx context.Context, id uuid.UUID, errors int, errorDetails []model.ErrorDetail) error {
+func (r *SessionRepositoryImpl) Fail(ctx context.Context, id uuid.UUID, errors int, errorDetails []model.ErrorDetail) error {
 	query := `
 		UPDATE processing_sessions
 		SET status = 'failed', errors = $2, error_details = $3, completed_at = $4
@@ -208,7 +246,7 @@ func (r *SessionRepository) Fail(ctx context.Context, id uuid.UUID, errors int, 
 }
 
 // Delete deletes a session.
-func (r *SessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *SessionRepositoryImpl) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM processing_sessions WHERE id = $1`
 
 	_, err := r.pool.Exec(ctx, query, id)
@@ -220,7 +258,7 @@ func (r *SessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // GetStats returns processing statistics.
-func (r *SessionRepository) GetStats(ctx context.Context) (*model.ProcessingStats, error) {
+func (r *SessionRepositoryImpl) GetStats(ctx context.Context) (*model.ProcessingStats, error) {
 	query := `
 		SELECT 
 			COUNT(*) as total_sessions,
@@ -249,7 +287,7 @@ func (r *SessionRepository) GetStats(ctx context.Context) (*model.ProcessingStat
 }
 
 // GetActive returns the currently active (processing) session.
-func (r *SessionRepository) GetActive(ctx context.Context) (*model.ProcessingSession, error) {
+func (r *SessionRepositoryImpl) GetActive(ctx context.Context) (*model.ProcessingSession, error) {
 	query := `
 		SELECT id, status, stage, progress, total_items, processed_items, errors,
 		       error_details, config, started_at, completed_at, created_by

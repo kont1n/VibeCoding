@@ -11,18 +11,18 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
-// RelationRepository provides database operations for person relations.
-type RelationRepository struct {
+// RelationRepositoryImpl implements RelationRepository interface.
+type RelationRepositoryImpl struct {
 	pool *pgxpool.Pool
 }
 
 // NewRelationRepository creates a new relation repository.
-func NewRelationRepository(pool *pgxpool.Pool) *RelationRepository {
-	return &RelationRepository{pool: pool}
+func NewRelationRepository(pool *pgxpool.Pool) *RelationRepositoryImpl {
+	return &RelationRepositoryImpl{pool: pool}
 }
 
 // Create creates a new person relation.
-func (r *RelationRepository) Create(ctx context.Context, relation *model.PersonRelation) error {
+func (r *RelationRepositoryImpl) Create(ctx context.Context, relation *model.PersonRelation) error {
 	query := `
 		INSERT INTO person_relations (person1_id, person2_id, similarity, created_at)
 		VALUES ($1, $2, $3, $4)
@@ -45,7 +45,7 @@ func (r *RelationRepository) Create(ctx context.Context, relation *model.PersonR
 }
 
 // CreateBatch creates multiple relations in a single transaction.
-func (r *RelationRepository) CreateBatch(ctx context.Context, relations []*model.PersonRelation) error {
+func (r *RelationRepositoryImpl) CreateBatch(ctx context.Context, relations []*model.PersonRelation) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -79,7 +79,7 @@ func (r *RelationRepository) CreateBatch(ctx context.Context, relations []*model
 }
 
 // GetByPersonID returns all relations for a person.
-func (r *RelationRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.PersonRelation, error) {
+func (r *RelationRepositoryImpl) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.PersonRelation, error) {
 	query := `
 		SELECT person1_id, person2_id, similarity, created_at
 		FROM person_relations
@@ -116,7 +116,7 @@ func (r *RelationRepository) GetByPersonID(ctx context.Context, personID uuid.UU
 }
 
 // GetByPersonIDWithMinSimilarity returns relations for a person with minimum similarity filter.
-func (r *RelationRepository) GetByPersonIDWithMinSimilarity(ctx context.Context, personID uuid.UUID, minSimilarity float32) ([]*model.PersonRelation, error) {
+func (r *RelationRepositoryImpl) GetByPersonIDWithMinSimilarity(ctx context.Context, personID uuid.UUID, minSimilarity float32) ([]*model.PersonRelation, error) {
 	query := `
 		SELECT person1_id, person2_id, similarity, created_at
 		FROM person_relations
@@ -154,7 +154,7 @@ func (r *RelationRepository) GetByPersonIDWithMinSimilarity(ctx context.Context,
 }
 
 // GetGraph returns person nodes for graph visualization.
-func (r *RelationRepository) GetGraph(ctx context.Context, personIDs []uuid.UUID, minSimilarity float32) ([]model.PersonNode, error) {
+func (r *RelationRepositoryImpl) GetGraph(ctx context.Context, personIDs []uuid.UUID, minSimilarity float32) ([]model.PersonNode, error) {
 	if len(personIDs) == 0 {
 		return nil, nil
 	}
@@ -197,7 +197,7 @@ func (r *RelationRepository) GetGraph(ctx context.Context, personIDs []uuid.UUID
 }
 
 // GetAll returns all relations.
-func (r *RelationRepository) GetAll(ctx context.Context) ([]*model.PersonRelation, error) {
+func (r *RelationRepositoryImpl) GetAll(ctx context.Context) ([]*model.PersonRelation, error) {
 	query := `
 		SELECT person1_id, person2_id, similarity, created_at
 		FROM person_relations
@@ -233,7 +233,7 @@ func (r *RelationRepository) GetAll(ctx context.Context) ([]*model.PersonRelatio
 }
 
 // Delete deletes a relation.
-func (r *RelationRepository) Delete(ctx context.Context, person1ID, person2ID uuid.UUID) error {
+func (r *RelationRepositoryImpl) Delete(ctx context.Context, person1ID, person2ID uuid.UUID) error {
 	query := `DELETE FROM person_relations WHERE person1_id = $1 AND person2_id = $2`
 
 	_, err := r.pool.Exec(ctx, query, person1ID, person2ID)
@@ -245,7 +245,7 @@ func (r *RelationRepository) Delete(ctx context.Context, person1ID, person2ID uu
 }
 
 // DeleteByPersonID deletes all relations for a person.
-func (r *RelationRepository) DeleteByPersonID(ctx context.Context, personID uuid.UUID) error {
+func (r *RelationRepositoryImpl) DeleteByPersonID(ctx context.Context, personID uuid.UUID) error {
 	query := `DELETE FROM person_relations WHERE person1_id = $1 OR person2_id = $1`
 
 	_, err := r.pool.Exec(ctx, query, personID)

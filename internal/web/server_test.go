@@ -51,4 +51,3 @@ func TestHealthEndpoints_OK(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, res.StatusCode)
 	}
 }
-

@@ -8,10 +8,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
+
+	pkgerrors "github.com/kont1n/face-grouper/internal/pkg/errors"
 )
 
 // MaxBodySize middleware limits the request body size.
@@ -112,7 +115,7 @@ func (rl *RateLimiter) Cleanup(interval time.Duration, stopCh <-chan struct{}) {
 			rl.mu.Lock()
 			now := time.Now()
 			for key, entry := range rl.limiters {
-				// Удаляем только те записи, которые не обращались > 3 минут.
+				// Remove entries that haven't been accessed for more than 3 minutes.
 				if now.Sub(entry.lastSeen) > 3*time.Minute {
 					delete(rl.limiters, key)
 				}
@@ -149,9 +152,10 @@ func Recovery(logger interface{ Error(string, ...any) }) func(http.Handler) http
 
 // ErrorResponse represents an error response.
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Code    string `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
+	Error   string         `json:"error"`
+	Code    string         `json:"code,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Details map[string]any `json:"details,omitempty"`
 }
 
 // WriteError writes an error response.
@@ -169,6 +173,18 @@ func WriteErrorWithCode(w http.ResponseWriter, statusCode int, err, code, messag
 		Error:   err,
 		Code:    code,
 		Message: message,
+	})
+}
+
+// WriteAppError writes a structured AppError response.
+func WriteAppError(w http.ResponseWriter, appErr *pkgerrors.AppError) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(appErr.HTTPStatus)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error:   appErr.Message,
+		Code:    string(appErr.Code),
+		Message: appErr.Message,
+		Details: appErr.Details,
 	})
 }
 
@@ -231,4 +247,129 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+// EndpointRateLimit defines rate limit configuration for a specific endpoint pattern.
+type EndpointRateLimit struct {
+	Pattern string  // URL pattern (e.g., "/api/v1/upload", "/health").
+	RPS     float64 // Requests per second.
+	Burst   int     // Maximum burst size.
+}
+
+// MultiRateLimiter provides per-endpoint HTTP rate limiting middleware.
+// It allows different rate limits for different endpoint patterns.
+type MultiRateLimiter struct {
+	limits       map[string]*rate.Limiter // pattern -> limiter.
+	limiters     map[string]*limiterEntry // ip:pattern -> limiter.
+	mu           sync.RWMutex
+	defaultRPS   rate.Limit
+	defaultBurst int
+}
+
+// NewMultiRateLimiter creates a new multi-endpoint rate limiter.
+// defaultRPS and defaultBurst are used for endpoints without specific configuration.
+func NewMultiRateLimiter(defaultRPS float64, defaultBurst int) *MultiRateLimiter {
+	return &MultiRateLimiter{
+		limits:       make(map[string]*rate.Limiter),
+		limiters:     make(map[string]*limiterEntry),
+		defaultRPS:   rate.Limit(defaultRPS),
+		defaultBurst: defaultBurst,
+	}
+}
+
+// AddEndpointLimit adds a rate limit configuration for a specific endpoint pattern.
+func (mrl *MultiRateLimiter) AddEndpointLimit(pattern string, rps float64, burst int) {
+	mrl.mu.Lock()
+	defer mrl.mu.Unlock()
+	mrl.limits[pattern] = rate.NewLimiter(rate.Limit(rps), burst)
+}
+
+// getLimiterForEndpoint returns the appropriate limiter for the given IP and endpoint.
+func (mrl *MultiRateLimiter) getLimiterForEndpoint(ip, path string) *rate.Limiter {
+	// Find matching pattern (exact match or prefix match).
+	var pattern string
+	for p := range mrl.limits {
+		if strings.HasPrefix(path, p) {
+			if pattern == "" || len(p) > len(pattern) {
+				pattern = p
+			}
+		}
+	}
+
+	key := ip + ":" + pattern
+	if pattern == "" {
+		key = ip + ":default"
+	}
+
+	mrl.mu.RLock()
+	entry, exists := mrl.limiters[key]
+	mrl.mu.RUnlock()
+
+	if exists {
+		entry.lastSeen = time.Now()
+		return entry.limiter
+	}
+
+	mrl.mu.Lock()
+	defer mrl.mu.Unlock()
+
+	// Double-check.
+	if entry, exists = mrl.limiters[key]; exists {
+		entry.lastSeen = time.Now()
+		return entry.limiter
+	}
+
+	// Create new limiter for this key.
+	var limiter *rate.Limiter
+	if pattern != "" && mrl.limits[pattern] != nil {
+		// Use endpoint-specific limit.
+		cfg := mrl.limits[pattern]
+		limiter = rate.NewLimiter(cfg.Limit(), cfg.Burst())
+	} else {
+		// Use default limit.
+		limiter = rate.NewLimiter(mrl.defaultRPS, mrl.defaultBurst)
+	}
+
+	mrl.limiters[key] = &limiterEntry{
+		limiter:  limiter,
+		lastSeen: time.Now(),
+	}
+	return limiter
+}
+
+// Middleware returns the HTTP middleware for per-endpoint rate limiting.
+func (mrl *MultiRateLimiter) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := getClientIP(r)
+		limiter := mrl.getLimiterForEndpoint(ip, r.URL.Path)
+
+		if !limiter.Allow() {
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Cleanup removes limiters that haven't been used recently.
+func (mrl *MultiRateLimiter) Cleanup(interval time.Duration, stopCh <-chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			mrl.mu.Lock()
+			now := time.Now()
+			for key, entry := range mrl.limiters {
+				if now.Sub(entry.lastSeen) > 3*time.Minute {
+					delete(mrl.limiters, key)
+				}
+			}
+			mrl.mu.Unlock()
+		case <-stopCh:
+			return
+		}
+	}
 }

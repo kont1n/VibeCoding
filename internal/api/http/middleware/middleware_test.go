@@ -72,4 +72,3 @@ func TestRecoveryConvertsPanicTo500(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
 	}
 }
-

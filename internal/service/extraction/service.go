@@ -22,9 +22,10 @@ import (
 	"github.com/kont1n/face-grouper/platform/pkg/logger"
 )
 
-// ExtractionResult агрегирует результаты извлечения лиц.
+// ExtractionResult aggregates face extraction results.
 type ExtractionResult struct {
 	Faces      []model.Face
+	Clusters   []model.Cluster
 	ErrorCount int
 	FileErrors map[string]string
 }
@@ -53,12 +54,12 @@ func NewExtractionService(
 	}
 }
 
-// Extract выполняет обнаружение лиц и извлечение эмбеддингов.
+// Extract performs face detection and embedding extraction.
 func (s *extractionService) Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*ExtractionResult, error) {
 	res := &ExtractionResult{FileErrors: make(map[string]string)}
 
-	// Если модели/ONNX Runtime не инициализировались (например, в -view режиме без успешного ORT),
-	// то иначе это приведёт к дедлоку в ожидании пулов.
+	// If models/ONNX Runtime were not initialized (e.g., in -view mode without ORT),
+	// this would cause a deadlock waiting on pools.
 	if len(s.detectorPool) == 0 || len(s.recPool) == 0 {
 		return nil, fmt.Errorf(
 			"extraction runtime not initialized: detectors=%d recognizers=%d",
@@ -78,25 +79,25 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 		workers = 1
 	}
 
-	// Создаём пул детекторов.
+	// Create detector pool.
 	detPool := make(chan ml.DetectorGateway, len(s.detectorPool))
 	for _, det := range s.detectorPool {
 		detPool <- det
 	}
 
-	// Создаём пул распознавателей.
+	// Create recognizer pool.
 	recPool := make(chan ml.RecognizerGateway, len(s.recPool))
 	for _, rec := range s.recPool {
 		recPool <- rec
 	}
 
-	// Получаем размер входа модели распознавания.
+	// Get recognizer model input size.
 	var recSize int
 	if len(s.recPool) > 0 {
 		recSize = s.recPool[0].InputSize()
 	}
 
-	// Batcher для распознавания.
+	// Batcher for recognition.
 	embedBatchSize := s.cfg.EmbedBatchSize
 	if embedBatchSize <= 0 {
 		embedBatchSize = 64
@@ -108,10 +109,10 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 	recBatcher := newRecognizerBatcher(recPool, workers, embedBatchSize, embedFlush)
 	defer recBatcher.Close()
 
-	// Semaphore для ограничения параллелизма.
+	// Semaphore for concurrency limiting.
 	sem := make(chan struct{}, workers)
 
-	// Используем errgroup для управления ошибками и отменой.
+	// Use errgroup for error handling and cancellation.
 	g, ctx := errgroup.WithContext(ctx)
 
 	var mu sync.Mutex
@@ -146,11 +147,11 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 			}
 			mu.Unlock()
 
-			return nil // не прерываем обработку из-за ошибки одного файла.
+			return nil // Don't stop processing on single file error.
 		})
 	}
 
-	// Ждём завершения всех горутин.
+	// Wait for all goroutines to complete.
 	if err := g.Wait(); err != nil {
 		return nil, fmt.Errorf("extraction: %w", err)
 	}
@@ -186,7 +187,7 @@ func (s *extractionService) processImage(
 		return nil, fmt.Errorf("empty image: %s", imagePath)
 	}
 
-	// Опциональный downscale.
+	// Optional downscale.
 	if s.cfg.MaxDim > 0 {
 		maxSide := img.Height
 		if img.Width > maxSide {
@@ -207,7 +208,7 @@ func (s *extractionService) processImage(
 		return nil, ctxErr
 	}
 
-	// Детекция.
+	// Detection.
 	det := <-detPool
 	defer func() { detPool <- det }()
 
@@ -219,7 +220,7 @@ func (s *extractionService) processImage(
 		return nil, nil
 	}
 
-	// Выравнивание лиц.
+	// Face alignment.
 	aligned := make([]*imageutil.Image, len(dets))
 	for i, d := range dets {
 		aligned[i] = ml.NormCrop(img, d.Kps, recSize)
@@ -232,13 +233,13 @@ func (s *extractionService) processImage(
 		}
 	}()
 
-	// Распознавание.
+	// Recognition.
 	embeddings, err := recBatcher.Infer(aligned)
 	if err != nil {
 		return nil, fmt.Errorf("recognition: %w", err)
 	}
 
-	// Сборка результатов.
+	// Build results.
 	faces := make([]model.Face, len(dets))
 	for i, d := range dets {
 		thumb := ""

@@ -12,9 +12,14 @@ import (
 	"time"
 )
 
+// SessionStatus represents the status of a processing session.
+type SessionStatus string
+
 const (
-	statusFailed    = "failed"
-	statusCompleted = "completed"
+	statusPending    SessionStatus = "pending"
+	statusProcessing SessionStatus = "processing"
+	statusCompleted  SessionStatus = "completed"
+	statusFailed     SessionStatus = "failed"
 )
 
 // PipelineRunner is the interface for running the face processing pipeline.
@@ -52,7 +57,7 @@ type SessionHandler struct {
 type sessionState struct {
 	ID        string
 	InputDir  string
-	Status    string // pending, processing, completed, failed.
+	Status    SessionStatus // pending, processing, completed, failed.
 	Stage     string
 	Progress  float64
 	StartedAt time.Time
@@ -148,7 +153,7 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	state := &sessionState{
 		ID:        sessionID,
 		InputDir:  req.InputDir,
-		Status:    "processing",
+		Status:    statusProcessing,
 		Stage:     "starting",
 		StartedAt: time.Now(),
 	}

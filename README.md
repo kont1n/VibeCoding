@@ -1,155 +1,276 @@
 # Face Grouper
 
-Сервис автоматической группировки фотографий по людям. Анализирует изображения с помощью нейросетевых моделей (SCRFD + ArcFace), определяет и кластеризует лица, предоставляет веб-интерфейс для просмотра результатов.
+**Face Grouper** — это высокопроизводительное Go-приложение для автоматической группировки лиц на фотографиях. Используйте ML-модели для обнаружения и распознавания лиц, кластеризации по сходству и организации результатов в удобную галерею.
 
-## Возможности
+## Особенности
 
-- Обнаружение лиц на фотографиях (SCRFD через ONNX Runtime)
-- Извлечение 512-мерных эмбеддингов (ArcFace)
-- Кластеризация лиц по персонам (BLAS-accelerated cosine similarity + Union-Find)
-- Веб-интерфейс: загрузка фото, галерея персон, граф связей, карточка персоны
-- Поддержка GPU: NVIDIA CUDA, AMD ROCm, Apple CoreML
-- REST API с SSE-стримингом прогресса
-- PostgreSQL + pgvector для хранения эмбеддингов и поиска похожих лиц
+- 🔍 **Обнаружение лиц** — детекция лиц на изображениях с помощью ONNX Runtime
+- 🧠 **Распознавание** — извлечение эмбеддингов лиц для сравнения
+- 📊 **Кластеризация** — группировка лиц по сходству (cosine similarity)
+- 🖼️ **Галерея персон** — веб-интерфейс для просмотра результатов
+- 🚀 **Производительность** — поддержка CPU/GPU (CUDA, ROCm, DirectML)
+- 🔒 **Безопасность** — защита от path traversal, zip bomb, zip slip
+- 📈 **Прогресс** — SSE streaming для отслеживания обработки
 
 ## Быстрый старт
 
 ### Требования
 
 - Go 1.25+
-- PostgreSQL 14+ с расширением [pgvector](https://github.com/pgvector/pgvector)
-- ONNX Runtime (скачивается автоматически в Docker)
-- Модели: `det_10g.onnx` (детекция), `w600k_r50.onnx` (распознавание)
+- Docker и Docker Compose (опционально, для PostgreSQL)
+- ONNX Runtime модели (загружаются автоматически)
 
-### Локальный запуск
+### Установка
 
 ```bash
-# Клонирование
-git clone https://github.com/kont1n/VibeCoding.git
-cd VibeCoding
+git clone https://github.com/kont1n/face-grouper.git
+cd face-grouper
+go mod download
+```
 
-# Конфигурация
+### Настройка
+
+Скопируйте `.env.example` в `.env` и настройте параметры:
+
+```bash
 cp deploy/env/.env.example .env
-# Отредактируйте .env — укажите параметры БД и путь к моделям
-
-# Запуск обработки + веб-интерфейс
-go run ./cmd --serve
-
-# Только веб-интерфейс (просмотр предыдущих результатов)
-go run ./cmd --view --port 3000
 ```
 
-### Docker Compose (рекомендуется)
+Основные параметры:
+
+```ini
+# Пути
+INPUT_DIR=./dataset          # Директория с исходными фото
+OUTPUT_DIR=./output          # Директория для результатов
+MODELS_DIR=./models          # Директория с ML-моделями
+
+# Обработка
+EXTRACT_WORKERS=4            # Количество воркеров
+GPU_ENABLED=0                # 1 для GPU, 0 для CPU
+CLUSTER_THRESHOLD=0.5        # Порог кластеризации (0.0-1.0)
+
+# Веб-интерфейс
+WEB_PORT=8080
+WEB_SERVE=false              # Запустить веб-UI после обработки
+```
+
+### Запуск
+
+**Полная обработка с веб-интерфейсом:**
 
 ```bash
-cd deploy/compose
-
-# CPU-версия
-docker compose up -d postgres face-grouper-cpu
-
-# NVIDIA GPU
-docker compose up -d postgres face-grouper-gpu
-
-# AMD ROCm
-docker compose up -d postgres face-grouper-rocm
+go run cmd/main.go --serve --port 8080
 ```
 
-Веб-интерфейс: http://localhost:8080
+**Только просмотр предыдущих результатов:**
 
-## CLI-флаги
+```bash
+go run cmd/main.go --view --port 8080
+```
 
-| Флаг | По умолчанию | Описание |
-|------|-------------|----------|
-| `-serve` | `false` | Запустить веб-интерфейс после обработки |
-| `-view` | `false` | Только веб-интерфейс (без обработки) |
-| `-port` | `8080` | Порт веб-интерфейса |
+**Обработка без веб-интерфейса:**
 
-## Конфигурация
+```bash
+go run cmd/main.go
+```
 
-Все параметры задаются через переменные окружения или файл `.env`. Полное описание: [doc/configuration.md](doc/configuration.md).
+### Docker
 
-Ключевые параметры:
+```bash
+# CPU версия
+docker-compose -f docker-compose.cpu.yml up
 
-| Переменная | По умолчанию | Описание |
-|-----------|-------------|----------|
-| `INPUT_DIR` | `./dataset` | Директория с исходными фото |
-| `OUTPUT_DIR` | `./output` | Директория результатов |
-| `MODELS_DIR` | `./models` | Директория с ONNX-моделями |
-| `EXTRACT_WORKERS` | `4` | Количество воркеров обработки |
-| `GPU_ENABLED` | `0` | Включить GPU (`1` — да) |
-| `CLUSTER_THRESHOLD` | `0.5` | Порог сходства для кластеризации |
-| `WEB_PORT` | `8080` | Порт веб-сервера |
-
-## API
-
-REST API доступен по адресу `http://localhost:8080/api/v1/`. Полная документация: [doc/api.md](doc/api.md).
-
-Основные эндпоинты:
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| `POST` | `/api/v1/upload` | Загрузка фото (multipart) |
-| `POST` | `/api/v1/sessions/{id}/process` | Запуск обработки |
-| `GET` | `/api/v1/sessions/{id}/stream` | Прогресс (SSE) |
-| `GET` | `/api/v1/persons` | Список персон |
-| `GET` | `/api/v1/persons/{id}` | Карточка персоны |
-| `GET` | `/api/v1/persons/{id}/relations` | Граф связей |
-| `GET` | `/health` | Проверка здоровья |
+# GPU версия (NVIDIA)
+docker-compose -f docker-compose.gpu.yml up
+```
 
 ## Архитектура
 
 ```
-cmd/main.go                     # Точка входа, CLI-флаги
-internal/
-  app/                          # Оркестрация, DI-контейнер, pipeline
-  api/http/handler/             # HTTP-обработчики
-  api/http/middleware/          # Rate limiter, CORS, recovery
-  service/
-    extraction/                 # Детекция лиц + эмбеддинги
-    clustering/                 # Кластеризация (Union-Find + BLAS)
-    organizer/                  # Организация результатов, аватары
-    report/                     # Генерация отчёта
-  infrastructure/
-    ml/                         # ONNX Runtime, SCRFD, ArcFace
-    database/                   # Миграции PostgreSQL
-  repository/
-    postgres/                   # CRUD-операции (persons, faces, photos)
-    filesystem/                 # Сканирование файлов
-  web/                          # HTTP-сервер, встроенный SPA
-platform/pkg/                   # Logger (zap), Closer (graceful shutdown)
-deploy/
-  docker/                       # Dockerfile.cpu, Dockerfile.nvidia, Dockerfile.rocm
-  compose/                      # docker-compose.yml
-  env/                          # .env.example
+cmd/main.go
+  └── internal/app/app.go         (оркестрация пайплайна)
+       ├── internal/service/      (бизнес-логика)
+       │    ├── scan/             (сканирование файлов)
+       │    ├── extraction/       (ML inference)
+       │    ├── clustering/       (группировка лиц)
+       │    ├── organizer/        (организация результатов)
+       │    └── report/           (генерация отчётов)
+       ├── internal/infrastructure/ml/  (ONNX Runtime)
+       ├── internal/repository/         (данные)
+       └── internal/web/                (HTTP сервер)
 ```
 
-Подробнее: [doc/architecture.md](doc/architecture.md).
+### Пайплайн обработки
 
-## Деплой
+1. **Scan** — сканирование директории, поиск изображений и ZIP-архивов
+2. **Extract** — обнаружение лиц, извлечение эмбеддингов, создание thumbnail
+3. **Cluster** — кластеризация лиц по сходству (Union-Find + cosine similarity)
+4. **Organize** — сохранение результатов, создание аватаров персон
+5. **Report** — генерация `report.json` с итогами обработки
 
-Три варианта Docker-образа:
+## API
 
-| Образ | Базовый образ | GPU |
-|-------|---------------|-----|
-| `Dockerfile.cpu` | `debian:bookworm-slim` | Нет |
-| `Dockerfile.nvidia` | `nvidia/cuda:12.3.2-cudnn9` | NVIDIA CUDA |
-| `Dockerfile.rocm` | `rocm/dev-ubuntu-22.04` | AMD ROCm |
+### Endpoints
 
-Подробнее: [doc/deployment.md](doc/deployment.md).
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/api/v1/upload` | Загрузка файлов (multipart/form-data) |
+| `POST` | `/api/v1/sessions/{id}/process` | Начать обработку сессии |
+| `GET` | `/api/v1/sessions/{id}/status` | Получить статус сессии |
+| `GET` | `/api/v1/sessions/{id}/stream` | SSE streaming прогресса |
+| `POST` | `/api/v1/sessions/{id}/cancel` | Отменить обработку |
+| `GET` | `/api/v1/persons` | Список персон |
+| `GET` | `/api/v1/persons/{id}` | Информация о персоне |
+| `PUT` | `/api/v1/persons/{id}` | Переименовать персону |
+| `GET` | `/api/v1/persons/{id}/photos` | Фотографии персоны |
+| `GET` | `/api/v1/sessions/{id}/errors` | Ошибки обработки |
 
-## Стек технологий
+### Пример загрузки
 
-| Компонент | Технология |
-|-----------|------------|
-| Язык | Go 1.25 |
-| ML-инференс | ONNX Runtime (SCRFD + ArcFace) |
-| БД | PostgreSQL 16 + pgvector |
-| Веб-сервер | net/http (stdlib) |
-| Логирование | go.uber.org/zap |
-| Числа | gonum.org/v1/gonum |
-| Драйвер БД | jackc/pgx/v5 |
-| Фронтенд | Vanilla JS + D3.js (embedded SPA) |
+```bash
+curl -X POST http://localhost:8080/api/v1/upload \
+  -F "files=@photo1.jpg" \
+  -F "files=@photo2.jpg" \
+  -F "files=@archive.zip"
+```
+
+### SSE Progress Events
+
+```json
+{
+  "session_id": "abc123",
+  "stage": "extract",
+  "stage_label": "Обнаружение лиц...",
+  "progress": 0.45,
+  "elapsed_ms": 12000,
+  "estimated_ms": 26000,
+  "eta_ms": 14000,
+  "done": false
+}
+```
+
+## Форматы файлов
+
+### Поддерживаемые изображения
+
+- JPEG (`.jpg`, `.jpeg`)
+- PNG (`.png`)
+- WEBP (`.webp`)
+
+### ZIP-архивы
+
+При загрузке ZIP-архива автоматически извлекаются все изображения.
+
+**Защита:**
+- Max размер архива: 2GB
+- Zip slip prevention
+- Magic bytes валидация
+
+## Отчёты
+
+После обработки в `OUTPUT_DIR` создаются:
+
+- `report.json` — полный отчёт с результатами
+- `processing.log` — лог обработки
+- `person_N/` — директории с фото персон
+- `.thumbnails/` — превью изображений
+
+### Структура report.json
+
+```json
+{
+  "started_at": "2026-03-31T10:00:00Z",
+  "duration": "45s",
+  "total_images": 150,
+  "total_faces": 423,
+  "total_persons": 87,
+  "errors": 3,
+  "threshold": 0.5,
+  "persons": [
+    {
+      "id": "uuid",
+      "photo_count": 5,
+      "face_count": 12,
+      "avatar_path": "person_1/avatar.jpg",
+      "quality_score": 0.85
+    }
+  ]
+}
+```
+
+## Конфигурация
+
+### Переменные окружения
+
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `INPUT_DIR` | Директория с исходными фото | `./dataset` |
+| `OUTPUT_DIR` | Директория результатов | `./output` |
+| `EXTRACT_WORKERS` | Количество воркеров | `4` |
+| `GPU_ENABLED` | Включить GPU (1/0) | `0` |
+| `GPU_DEVICE_ID` | ID GPU устройства | `0` |
+| `FORCE_CPU` | Принудительно CPU | `0` |
+| `PROVIDER_PRIORITY` | Приоритет провайдера | `auto` |
+| `CLUSTER_THRESHOLD` | Порог кластеризации | `0.5` |
+| `WEB_PORT` | Порт веб-интерфейса | `8080` |
+| `LOG_LEVEL` | Уровень логирования | `info` |
+
+### GPU поддержка
+
+Face Grouper поддерживает следующие бэкенды ONNX Runtime:
+
+- **CPU** — кроссплатформенный, по умолчанию
+- **CUDA** — NVIDIA GPU (требуется установка CUDA Toolkit)
+- **ROCm** — AMD GPU
+- **DirectML** — Windows DirectML
+
+## Безопасность
+
+- ✅ Path traversal protection
+- ✅ Zip bomb protection (2GB limit)
+- ✅ Zip slip prevention
+- ✅ Magic bytes validation
+- ✅ SQL injection protection (parameterized queries)
+- ✅ Rate limiting (100 RPS по умолчанию)
+- ✅ CORS (same-origin default)
+- ✅ Request body limits
+
+## Тестирование
+
+```bash
+# Запустить все тесты
+go test ./...
+
+# Запустить с race detector
+go test ./... -race
+
+# Запустить конкретный пакет
+go test ./internal/api/http/handler/... -v
+```
+
+## Производительность
+
+| Сценарий | Время |
+|----------|-------|
+| 100 фото, 200 лиц | ~30 сек (CPU) |
+| 1000 фото, 2000 лиц | ~5 мин (CPU) |
+| 1000 фото, 2000 лиц | ~1 мин (GPU) |
+
+*Время зависит от hardware и настроек.*
 
 ## Лицензия
 
-MIT
+MIT License — см. [LICENSE](LICENSE) файл.
+
+## Вклад
+
+1. Fork репозиторий
+2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit изменений (`git commit -m 'Add amazing feature'`)
+4. Push в branch (`git push origin feature/amazing-feature`)
+5. Откройте Pull Request
+
+## Контакты
+
+- **Issues:** [GitHub Issues](https://github.com/kont1n/face-grouper/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/kont1n/face-grouper/discussions)

@@ -176,7 +176,7 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorGatew
 					"device_id", providerCfg.DeviceID,
 					"err", err,
 				)
-				// Не валим весь сервер: extraction вернёт ошибку при пустых пулах.
+				// Don't crash the server: extraction will return error on empty pools.
 				for j := 0; j < i; j++ {
 					if pool[j] != nil {
 						pool[j].Close()
@@ -186,7 +186,7 @@ func (d *DiContainer) detectorPoolLocked(ctx context.Context) []ml.DetectorGatew
 			}
 			pool[i] = det
 
-			// Регистрация в graceful shutdown.
+			// Register in graceful shutdown.
 			closer.AddNamed(fmt.Sprintf("Detector %d", i), func(ctx context.Context) error {
 				det.Close()
 				return nil
@@ -244,7 +244,7 @@ func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerG
 			}
 			pool[i] = rec
 
-			// Регистрация в graceful shutdown.
+			// Register in graceful shutdown.
 			closer.AddNamed(fmt.Sprintf("Recognizer %d", i), func(ctx context.Context) error {
 				rec.Close()
 				return nil
@@ -255,40 +255,40 @@ func (d *DiContainer) recognizerPoolLocked(ctx context.Context) []ml.RecognizerG
 	return d.recognizerPool
 }
 
-// PersonRepository возвращает репозиторий персон.
-func (d *DiContainer) PersonRepository() *postgres.PersonRepository {
+// PersonRepository returns the person repository.
+func (d *DiContainer) PersonRepository() postgres.PersonRepository {
 	if d.db == nil {
 		return nil
 	}
 	return d.db.Persons
 }
 
-// FaceRepository возвращает репозиторий лиц.
-func (d *DiContainer) FaceRepository() *postgres.FaceRepository {
+// FaceRepository returns the face repository.
+func (d *DiContainer) FaceRepository() postgres.FaceRepository {
 	if d.db == nil {
 		return nil
 	}
 	return d.db.Faces
 }
 
-// PhotoRepository возвращает репозиторий фото.
-func (d *DiContainer) PhotoRepository() *postgres.PhotoRepository {
+// PhotoRepository returns the photo repository.
+func (d *DiContainer) PhotoRepository() postgres.PhotoRepository {
 	if d.db == nil {
 		return nil
 	}
 	return d.db.Photos
 }
 
-// RelationRepository возвращает репозиторий связей.
-func (d *DiContainer) RelationRepository() *postgres.RelationRepository {
+// RelationRepository returns the relation repository.
+func (d *DiContainer) RelationRepository() postgres.RelationRepository {
 	if d.db == nil {
 		return nil
 	}
 	return d.db.Relations
 }
 
-// SessionRepository возвращает репозиторий сессий.
-func (d *DiContainer) SessionRepository() *postgres.SessionRepository {
+// SessionRepository returns the session repository.
+func (d *DiContainer) SessionRepository() postgres.SessionRepository {
 	if d.db == nil {
 		return nil
 	}

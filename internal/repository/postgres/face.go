@@ -13,18 +13,18 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
-// FaceRepository provides database operations for faces.
-type FaceRepository struct {
+// FaceRepositoryImpl implements FaceRepository interface.
+type FaceRepositoryImpl struct {
 	pool *pgxpool.Pool
 }
 
 // NewFaceRepository creates a new face repository.
-func NewFaceRepository(pool *pgxpool.Pool) *FaceRepository {
-	return &FaceRepository{pool: pool}
+func NewFaceRepository(pool *pgxpool.Pool) *FaceRepositoryImpl {
+	return &FaceRepositoryImpl{pool: pool}
 }
 
 // Create creates a new face.
-func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
+func (r *FaceRepositoryImpl) Create(ctx context.Context, face *model.Face) error {
 	query := `
 		INSERT INTO faces (id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		                   det_score, quality_score, thumbnail_path, created_at)
@@ -56,7 +56,7 @@ func (r *FaceRepository) Create(ctx context.Context, face *model.Face) error {
 }
 
 // CreateBatch creates multiple faces using pgx.Batch for efficient bulk insert.
-func (r *FaceRepository) CreateBatch(ctx context.Context, faces []*model.Face) error {
+func (r *FaceRepositoryImpl) CreateBatch(ctx context.Context, faces []*model.Face) error {
 	if len(faces) == 0 {
 		return nil
 	}
@@ -100,7 +100,7 @@ func (r *FaceRepository) CreateBatch(ctx context.Context, faces []*model.Face) e
 }
 
 // GetByID returns a face by ID.
-func (r *FaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Face, error) {
+func (r *FaceRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		       det_score, quality_score, thumbnail_path, created_at
@@ -159,7 +159,7 @@ func scanFace(rows interface{ Scan(...any) error }) (*model.Face, error) {
 }
 
 // GetByPersonID returns all faces for a person.
-func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Face, error) {
+func (r *FaceRepositoryImpl) GetByPersonID(ctx context.Context, personID uuid.UUID) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		       det_score, quality_score, thumbnail_path, created_at
@@ -190,7 +190,7 @@ func (r *FaceRepository) GetByPersonID(ctx context.Context, personID uuid.UUID) 
 }
 
 // GetByPhotoID returns all faces for a photo.
-func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([]*model.Face, error) {
+func (r *FaceRepositoryImpl) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		       det_score, quality_score, thumbnail_path, created_at
@@ -221,7 +221,7 @@ func (r *FaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([
 }
 
 // FindSimilar finds similar faces using vector similarity.
-func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]*model.Face, error) {
+func (r *FaceRepositoryImpl) FindSimilar(ctx context.Context, embedding []float32, threshold float64, limit int) ([]*model.Face, error) {
 	query := `
 		SELECT id, person_id, photo_id, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
 		       det_score, quality_score, thumbnail_path, created_at
@@ -254,7 +254,7 @@ func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float32, l
 }
 
 // Update updates a face.
-func (r *FaceRepository) Update(ctx context.Context, face *model.Face) error {
+func (r *FaceRepositoryImpl) Update(ctx context.Context, face *model.Face) error {
 	query := `
 		UPDATE faces
 		SET person_id = $2, photo_id = $3, embedding = $4, bbox_x1 = $5, bbox_y1 = $6,
@@ -287,7 +287,7 @@ func (r *FaceRepository) Update(ctx context.Context, face *model.Face) error {
 }
 
 // Delete deletes a face.
-func (r *FaceRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *FaceRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM faces WHERE id = $1`
 
 	_, err := r.pool.Exec(ctx, query, id)
@@ -299,7 +299,7 @@ func (r *FaceRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // DeleteByPersonID deletes all faces for a person.
-func (r *FaceRepository) DeleteByPersonID(ctx context.Context, personID uuid.UUID) error {
+func (r *FaceRepositoryImpl) DeleteByPersonID(ctx context.Context, personID uuid.UUID) error {
 	query := `DELETE FROM faces WHERE person_id = $1`
 
 	_, err := r.pool.Exec(ctx, query, personID)

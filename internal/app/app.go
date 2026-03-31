@@ -192,97 +192,40 @@ func (a *App) runProcess(ctx context.Context) error {
 	outputDir := appCfg.App.OutputDir
 	thumbDir := filepath.Join(outputDir, ".thumbnails")
 
-	// Создаём директорию вывода.
+	// Create output directory.
 	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		return fmt.Errorf("cannot create output dir: %w", err)
 	}
 
-	// Создаём лог-файл.
-	logFile, err := os.Create(filepath.Join(outputDir, "processing.log")) //nolint:gosec
+	// Create log file.
+	logFile, err := os.OpenFile(filepath.Join(outputDir, "processing.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("cannot create log file: %w", err)
 	}
 	defer func() { _ = logFile.Close() }()
 	w := io.MultiWriter(os.Stdout, logFile)
 
-	start := time.Now()
-	stageDurations := make(map[string]time.Duration)
+	// Create pipeline context.
+	pc := NewPipelineContext(appCfg, outputDir, thumbDir, w)
 
-	// --- Scan. ---.
-	stageStart := time.Now()
-	_, _ = fmt.Fprintf(w, "=== Scanning directory ===\n")
-	files, err := api.Scan(ctx, appCfg.App.InputDir)
-	if err != nil {
-		return fmt.Errorf("scan error: %w", err)
-	}
-	_, _ = fmt.Fprintf(w, "Found %d image(s)\n\n", len(files))
-	stageDurations["scan"] = time.Since(stageStart)
+	// Build and execute pipeline.
+	pipeline := NewProcessingPipeline(
+		NewScanStep(api, appCfg.App.InputDir),
+		NewThumbnailsStep(),
+		NewExtractStep(api, thumbDir, w),
+		NewClusterStep(api, appCfg.Cluster.Threshold),
+		NewOrganizeStep(api, outputDir, appCfg.Organizer.AvatarUpdateThreshold, w),
+		NewReportStep(appCfg),
+	)
 
-	if len(files) == 0 {
-		_, _ = fmt.Fprintf(w, "No images found, nothing to do.\n")
-		return nil
-	}
-
-	// --- Thumbnails dir. ---.
-	err = os.RemoveAll(thumbDir)
-	if err != nil {
-		return fmt.Errorf("cannot clean thumbnails dir: %w", err)
-	}
-	err = os.MkdirAll(thumbDir, 0o750)
-	if err != nil {
-		return fmt.Errorf("cannot create thumbnails dir: %w", err)
+	if err := pipeline.Execute(ctx, pc); err != nil {
+		return err
 	}
 
-	// --- Extract. ---.
-	stageStart = time.Now()
-	_, _ = fmt.Fprintf(w, "=== Extracting face embeddings ===\n")
-	_, _ = fmt.Fprintf(w, "Mode: %s, %d worker(s)\n", selectedProvider.Name, appCfg.Extract.Workers)
-	if appCfg.Extract.MaxDim > 0 {
-		_, _ = fmt.Fprintf(w, "Pre-resize: max %dpx\n", appCfg.Extract.MaxDim)
-	}
+	// Print summary.
+	a.printSummary(w, pc.Report, pc.StageDurations)
 
-	extractResult, err := api.Extract(ctx, files, thumbDir, w)
-	if err != nil {
-		return fmt.Errorf("extraction error: %w", err)
-	}
-	_, _ = fmt.Fprintf(w, "\nTotal faces detected: %d (errors: %d)\n\n", len(extractResult.Faces), extractResult.ErrorCount)
-	stageDurations["extract"] = time.Since(stageStart)
-
-	if len(extractResult.Faces) == 0 {
-		_, _ = fmt.Fprintf(w, "No faces found, nothing to group.\n")
-		return nil
-	}
-
-	// --- Cluster. ---.
-	stageStart = time.Now()
-	_, _ = fmt.Fprintf(w, "=== Clustering faces ===\n")
-	clusters, err := api.Cluster(ctx, extractResult.Faces, appCfg.Cluster.Threshold)
-	if err != nil {
-		return fmt.Errorf("clustering error: %w", err)
-	}
-	_, _ = fmt.Fprintf(w, "Found %d person(s)\n\n", len(clusters))
-	stageDurations["cluster"] = time.Since(stageStart)
-
-	// --- Organize. ---.
-	stageStart = time.Now()
-	_, _ = fmt.Fprintf(w, "=== Organizing output ===\n")
-	persons, err := api.Organize(ctx, clusters, outputDir, appCfg.Organizer.AvatarUpdateThreshold, w)
-	if err != nil {
-		return fmt.Errorf("organizer error: %w", err)
-	}
-	stageDurations["organize_avatar"] = time.Since(stageStart)
-
-	// --- Build report. ---.
-	rpt := buildReportFromResults(start, appCfg, len(files), extractResult, persons)
-
-	if err := report.Save(rpt, outputDir); err != nil {
-		_, _ = fmt.Fprintf(w, "WARNING: cannot save report: %v\n", err)
-	}
-
-	// --- Summary. ---.
-	a.printSummary(w, rpt, stageDurations)
-
-	// --- Web UI. ---.
+	// Start web UI if requested.
 	if appCfg.Web.Serve {
 		_, _ = fmt.Fprintf(w, "\n=== Starting web UI ===\n")
 		return a.runWebUI(ctx, outputDir, appCfg.Web.Port)

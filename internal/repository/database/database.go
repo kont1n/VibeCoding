@@ -18,11 +18,11 @@ type DB struct {
 	Pool *pgxpool.Pool
 
 	// Repositories.
-	Persons   *repopostgres.PersonRepository
-	Faces     *repopostgres.FaceRepository
-	Photos    *repopostgres.PhotoRepository
-	Relations *repopostgres.RelationRepository
-	Sessions  *repopostgres.SessionRepository
+	Persons   repopostgres.PersonRepository
+	Faces     repopostgres.FaceRepository
+	Photos    repopostgres.PhotoRepository
+	Relations repopostgres.RelationRepository
+	Sessions  repopostgres.SessionRepository
 }
 
 // New creates a new database connection and initializes repositories.

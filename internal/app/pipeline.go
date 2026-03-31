@@ -47,6 +47,8 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	// Stage tracking for ETA calculation.
 	stageTimes := make(map[string]time.Time)
 	totalProgress := 0.0
+	var totalItems, processedItems int
+	var currentFile string
 
 	send := func(stage, label string, progress float64) {
 		now := time.Now()
@@ -83,13 +85,16 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		}
 
 		ch <- handler.ProgressEvent{
-			SessionID:   sessionID,
-			Stage:       stage,
-			StageLabel:  label,
-			Progress:    totalProgress,
-			ElapsedMs:   elapsed.Milliseconds(),
-			EstimatedMs: estimatedTotal.Milliseconds(),
-			ETAMs:       eta.Milliseconds(),
+			SessionID:      sessionID,
+			Stage:          stage,
+			StageLabel:     label,
+			Progress:       totalProgress,
+			ProcessedItems: processedItems,
+			TotalItems:     totalItems,
+			CurrentFile:    currentFile,
+			ElapsedMs:      elapsed.Milliseconds(),
+			EstimatedMs:    estimatedTotal.Milliseconds(),
+			ETAMs:          eta.Milliseconds(),
 		}
 	}
 
@@ -117,7 +122,7 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		return
 	}
 
-	logFile, err := os.Create(filepath.Join(outputDir, "processing.log")) //nolint:gosec
+	logFile, err := os.OpenFile(filepath.Join(outputDir, "processing.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec
 	if err != nil {
 		fail(fmt.Sprintf("cannot create log file: %v", err))
 		return
@@ -134,6 +139,9 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		fail(fmt.Sprintf("scan error: %v", scanErr))
 		return
 	}
+	totalItems = len(files)
+	processedItems = 0
+	send("scan", "Сканирование...", 1.0)
 
 	// --- Thumbnails. ---.
 	_ = os.RemoveAll(thumbDir)
@@ -147,6 +155,8 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		fail(fmt.Sprintf("extraction error: %v", err))
 		return
 	}
+	processedItems = len(files)
+	totalItems = len(files)
 	_, _ = fmt.Fprintf(w, "Total faces: %d, errors: %d\n", len(extractResult.Faces), extractResult.ErrorCount)
 	send("extract", "Обнаружение лиц...", 1.0)
 
@@ -163,6 +173,8 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		fail(fmt.Sprintf("clustering error: %v", err))
 		return
 	}
+	processedItems = len(extractResult.Faces)
+	totalItems = len(extractResult.Faces)
 	_, _ = fmt.Fprintf(w, "Found %d person(s)\n", len(clusters))
 	send("cluster", "Группировка...", 1.0)
 
@@ -174,6 +186,8 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 		fail(fmt.Sprintf("organizer error: %v", err))
 		return
 	}
+	processedItems = len(persons)
+	totalItems = len(persons)
 	send("organize", "Организация результатов...", 1.0)
 
 	// --- Report. ---.

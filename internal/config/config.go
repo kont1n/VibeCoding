@@ -26,11 +26,10 @@ type Config struct {
 	Redis     env.RedisConfig
 }
 
-// Load загружает конфигурацию из .env файла и переменных окружения.
+// Load loads configuration from .env file and environment variables.
 func Load(path string) error {
-	// Overload перезаписывает существующие переменные окружения.
-	// Мы не должны затирать переменные, переданные через Docker/Compose,
-	// поэтому используем Load (устанавливает только отсутствующие env).
+	// godotenv.Load() only sets missing environment variables.
+	// This preserves variables set via Docker/Compose.
 	err := godotenv.Load(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("load .env file: %w", err)

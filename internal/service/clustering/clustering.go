@@ -70,6 +70,15 @@ type intPair struct{ i, j int }
 
 const blockSize = 512
 
+// denseMatrixPool is a sync.Pool for reusing []float64 slices to reduce GC pressure
+// during block-wise matrix multiplication.
+var denseMatrixPool = sync.Pool{
+	New: func() any {
+		// Pre-allocate slice for blockSize x blockSize matrix.
+		return make([]float64, blockSize*blockSize)
+	},
+}
+
 // Cluster groups faces using BLAS-accelerated matrix multiplication for similarity.
 // Applies L2-normalization to embeddings to ensure dot product = cosine similarity.
 func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error) {
@@ -111,6 +120,7 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 	uf := newUnionFind(n)
 
 	pairs := make(chan intPair, 4096)
+	errCh := make(chan error, 1)
 
 	var scanWg sync.WaitGroup
 	scanWg.Add(1)
@@ -121,6 +131,7 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 		for iStart := 0; iStart < n; iStart += blockSize {
 			select {
 			case <-ctx.Done():
+				errCh <- ctx.Err()
 				return
 			default:
 			}
@@ -133,6 +144,14 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 			blockI := E.Slice(iStart, iEnd, 0, dim).(*mat.Dense) //nolint:forcetypeassert,errcheck
 
 			for jStart := iStart; jStart < n; jStart += blockSize {
+				// Check context in inner loop for faster cancellation.
+				select {
+				case <-ctx.Done():
+					errCh <- ctx.Err()
+					return
+				default:
+				}
+
 				jEnd := jStart + blockSize
 				if jEnd > n {
 					jEnd = n
@@ -140,7 +159,12 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 				cols := jEnd - jStart
 				blockJ := E.Slice(jStart, jEnd, 0, dim).(*mat.Dense) //nolint:forcetypeassert,errcheck
 
-				sim := mat.NewDense(rows, cols, nil)
+				// Get pre-allocated slice from pool for similarity matrix.
+				simDataSlice, ok := denseMatrixPool.Get().([]float64)
+				if !ok {
+					simDataSlice = make([]float64, blockSize*blockSize)
+				}
+				sim := mat.NewDense(rows, cols, simDataSlice[:rows*cols])
 				sim.Mul(blockI, blockJ.T())
 
 				simData := sim.RawMatrix()
@@ -157,21 +181,60 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 							continue
 						}
 						if simData.Data[rowOff+lj] >= threshold {
-							pairs <- intPair{gi, gj}
+							select {
+							case pairs <- intPair{gi, gj}:
+							case <-ctx.Done():
+								denseMatrixPool.Put(simDataSlice)
+								errCh <- ctx.Err()
+								return
+							}
 						}
 					}
 				}
+
+				// Return slice to pool after use.
+				denseMatrixPool.Put(simDataSlice)
 			}
 		}
 	}()
 
-	for p := range pairs {
-		uf.union(p.i, p.j)
+	// Process pairs with context cancellation support.
+processPairs:
+	for {
+		select {
+		case p, ok := <-pairs:
+			if !ok {
+				break processPairs
+			}
+			uf.union(p.i, p.j)
+		case <-ctx.Done():
+			scanWg.Wait()
+			// Drain remaining pairs to avoid goroutine leak.
+			go func() {
+				for range pairs {
+					_ = struct{}{} // Drain.
+				}
+			}()
+			return nil, ctx.Err()
+		}
 	}
 	scanWg.Wait()
 
+	// Check for cancellation error from worker.
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	// Group faces by cluster root.
 	groups := make(map[int][]int)
 	for i := 0; i < n; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 		root := uf.find(i)
 		groups[root] = append(groups[root], i)
 	}

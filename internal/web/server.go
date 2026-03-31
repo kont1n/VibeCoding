@@ -172,13 +172,21 @@ func (s *Server) serveOutputFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve the file.
+	// Serve the file with cache headers for static assets.
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	http.ServeFile(w, r, fullPath)
 }
 
 func (s *Server) applyMiddleware() {
 	// Build middleware chain: Recovery → RateLimit → MaxBody → CORS → Handler.
-	rateLimiter := middleware.NewRateLimiter(100, 200)
+	// Use per-endpoint rate limiting with different limits for different endpoints.
+	rateLimiter := middleware.NewMultiRateLimiter(100, 200) // Default: 100 RPS, burst 200.
+
+	// Stricter limit for upload endpoint (resource-intensive).
+	rateLimiter.AddEndpointLimit("/api/v1/upload", 10, 20) // 10 RPS, burst 20.
+
+	// Higher limit for health checks (lightweight).
+	rateLimiter.AddEndpointLimit("/health", 1000, 2000) // 1000 RPS, burst 2000.
 
 	go rateLimiter.Cleanup(5*time.Minute, s.stopCh)
 
