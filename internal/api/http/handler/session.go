@@ -159,9 +159,10 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	}
 	h.sessions.Store(sessionID, state)
 
-	// Create cancellable context independent of the HTTP request lifecycle.
-	// Using r.Context() here would cancel the pipeline when the HTTP response is sent.
-	cancelCtx, cancel := context.WithCancel(context.Background())
+	// Inherit request-scoped values but detach cancellation from HTTP lifecycle.
+	// This keeps explicit cancel support via CancelProcessing.
+	baseCtx := context.WithoutCancel(r.Context())
+	cancelCtx, cancel := context.WithCancel(baseCtx)
 	h.cancelFuncs.Store(sessionID, cancel)
 
 	// Start pipeline asynchronously.
