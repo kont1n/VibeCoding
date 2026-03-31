@@ -55,14 +55,20 @@ type SessionHandler struct {
 }
 
 type sessionState struct {
-	ID        string
-	InputDir  string
-	Status    SessionStatus // pending, processing, completed, failed.
-	Stage     string
-	Progress  float64
-	StartedAt time.Time
-	Error     string
-	mu        sync.RWMutex
+	ID             string
+	InputDir       string
+	Status         SessionStatus // pending, processing, completed, failed.
+	Stage          string
+	StageLabel     string
+	Progress       float64
+	ProcessedItems int
+	TotalItems     int
+	CurrentFile    string
+	EstimatedMs    int64
+	ETAMs          int64
+	StartedAt      time.Time
+	Error          string
+	mu             sync.RWMutex
 }
 
 // NewSessionHandler creates a new SessionHandler.
@@ -151,11 +157,12 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 	}
 
 	state := &sessionState{
-		ID:        sessionID,
-		InputDir:  req.InputDir,
-		Status:    statusProcessing,
-		Stage:     "starting",
-		StartedAt: time.Now(),
+		ID:         sessionID,
+		InputDir:   req.InputDir,
+		Status:     statusProcessing,
+		Stage:      "starting",
+		StageLabel: "Подготовка...",
+		StartedAt:  time.Now(),
 	}
 	h.sessions.Store(sessionID, state)
 
@@ -187,7 +194,13 @@ func (h *SessionHandler) StartProcessing(w http.ResponseWriter, r *http.Request)
 		for event := range progressCh {
 			state.mu.Lock()
 			state.Stage = event.Stage
+			state.StageLabel = event.StageLabel
 			state.Progress = event.Progress
+			state.ProcessedItems = event.ProcessedItems
+			state.TotalItems = event.TotalItems
+			state.CurrentFile = event.CurrentFile
+			state.EstimatedMs = event.EstimatedMs
+			state.ETAMs = event.ETAMs
 			if event.Done {
 				if event.Error != "" {
 					state.Status = statusFailed
@@ -225,12 +238,18 @@ func (h *SessionHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	defer state.mu.RUnlock()
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id": state.ID,
-		"status":     state.Status,
-		"stage":      state.Stage,
-		"progress":   state.Progress,
-		"elapsed_ms": time.Since(state.StartedAt).Milliseconds(),
-		"error":      state.Error,
+		"session_id":      state.ID,
+		"status":          state.Status,
+		"stage":           state.Stage,
+		"stage_label":     state.StageLabel,
+		"progress":        state.Progress,
+		"processed_items": state.ProcessedItems,
+		"total_items":     state.TotalItems,
+		"current_file":    state.CurrentFile,
+		"elapsed_ms":      time.Since(state.StartedAt).Milliseconds(),
+		"estimated_ms":    state.EstimatedMs,
+		"eta_ms":          state.ETAMs,
+		"error":           state.Error,
 	})
 }
 
@@ -275,12 +294,18 @@ func (h *SessionHandler) StreamProgress(w http.ResponseWriter, r *http.Request) 
 			}
 			state.mu.RLock()
 			event := ProgressEvent{
-				SessionID: state.ID,
-				Stage:     state.Stage,
-				Progress:  state.Progress,
-				Done:      state.Status == statusCompleted || state.Status == statusFailed,
-				Error:     state.Error,
-				ElapsedMs: time.Since(state.StartedAt).Milliseconds(),
+				SessionID:      state.ID,
+				Stage:          state.Stage,
+				StageLabel:     state.StageLabel,
+				Progress:       state.Progress,
+				ProcessedItems: state.ProcessedItems,
+				TotalItems:     state.TotalItems,
+				CurrentFile:    state.CurrentFile,
+				Done:           state.Status == statusCompleted || state.Status == statusFailed,
+				Error:          state.Error,
+				ElapsedMs:      time.Since(state.StartedAt).Milliseconds(),
+				EstimatedMs:    state.EstimatedMs,
+				ETAMs:          state.ETAMs,
 			}
 			state.mu.RUnlock()
 

@@ -858,19 +858,29 @@ function updateProgress(data) {
     'starting': 'Подготовка...'
   };
 
-  const stage = data.stage_label || stageLabels[data.stage] || data.stage || 'Обработка...';
+  let stage = data.stage_label || stageLabels[data.stage] || data.stage || 'Обработка...';
   const pct = Math.round((data.progress || 0) * 100);
   const elapsed = data.elapsed_ms || (Date.now() - (processingStartTime || Date.now()));
+  const processed = data.processed_items || 0;
+  const total = data.total_items || 0;
+
+  if (total > 0) {
+    stage += ' (' + processed + '/' + total + ')';
+  }
 
   document.getElementById('proc-stage').textContent = stage;
   document.getElementById('proc-percent').textContent = pct + '%';
   document.getElementById('proc-bar').style.width = pct + '%';
   document.getElementById('proc-elapsed').textContent = 'Прошло: ' + formatTime(elapsed);
 
-  // ETA estimate.
-  if (data.progress > 0.05 && data.progress < 1.0) {
+  // ETA from backend (preferred), fallback to local estimate.
+  if (data.eta_ms && data.eta_ms > 0) {
+    document.getElementById('proc-eta').textContent = '~' + formatTime(data.eta_ms) + ' осталось';
+  } else if (data.progress > 0.05 && data.progress < 1.0) {
     const eta = (elapsed / data.progress) * (1 - data.progress);
     document.getElementById('proc-eta').textContent = '~' + formatTime(eta) + ' осталось';
+  } else {
+    document.getElementById('proc-eta').textContent = '';
   }
 }
 
