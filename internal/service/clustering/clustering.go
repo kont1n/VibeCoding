@@ -75,7 +75,8 @@ const blockSize = 512
 var denseMatrixPool = sync.Pool{
 	New: func() any {
 		// Pre-allocate slice for blockSize x blockSize matrix.
-		return make([]float64, blockSize*blockSize)
+		data := make([]float64, blockSize*blockSize)
+		return &data
 	},
 }
 
@@ -160,10 +161,12 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 				blockJ := E.Slice(jStart, jEnd, 0, dim).(*mat.Dense) //nolint:forcetypeassert,errcheck
 
 				// Get pre-allocated slice from pool for similarity matrix.
-				simDataSlice, ok := denseMatrixPool.Get().([]float64)
+				simDataSlicePtr, ok := denseMatrixPool.Get().(*[]float64)
 				if !ok {
-					simDataSlice = make([]float64, blockSize*blockSize)
+					fallback := make([]float64, blockSize*blockSize)
+					simDataSlicePtr = &fallback
 				}
+				simDataSlice := *simDataSlicePtr
 				sim := mat.NewDense(rows, cols, simDataSlice[:rows*cols])
 				sim.Mul(blockI, blockJ.T())
 
@@ -184,7 +187,7 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 							select {
 							case pairs <- intPair{gi, gj}:
 							case <-ctx.Done():
-								denseMatrixPool.Put(simDataSlice)
+								denseMatrixPool.Put(simDataSlicePtr)
 								errCh <- ctx.Err()
 								return
 							}
@@ -193,7 +196,7 @@ func Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]mode
 				}
 
 				// Return slice to pool after use.
-				denseMatrixPool.Put(simDataSlice)
+				denseMatrixPool.Put(simDataSlicePtr)
 			}
 		}
 	}()

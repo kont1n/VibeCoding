@@ -9,14 +9,6 @@ import (
 	api "github.com/kont1n/face-grouper/internal/api/http/handler"
 )
 
-type stubHealthChecker struct {
-	err error
-}
-
-func (s *stubHealthChecker) Ping(_ context.Context) error {
-	return s.err
-}
-
 type stubPipelineRunner struct{}
 
 func (s *stubPipelineRunner) RunPipeline(_ context.Context, _ string, _ string) (<-chan api.ProgressEvent, error) {

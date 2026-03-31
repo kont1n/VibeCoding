@@ -33,7 +33,7 @@ func createFormFileWithType(w *multipart.Writer, fieldname, filename, contentTyp
 
 // buildMultipartRequest builds a POST multipart request where each file is submitted with
 // the correct image Content-Type derived from its extension.
-func buildMultipartRequest(t *testing.T, files map[string][]byte) (*http.Request, string) {
+func buildMultipartRequest(t *testing.T, files map[string][]byte) *http.Request {
 	t.Helper()
 
 	extToMIME := map[string]string{
@@ -62,14 +62,14 @@ func buildMultipartRequest(t *testing.T, files map[string][]byte) (*http.Request
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/upload", &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	return req, mw.FormDataContentType()
+	return req
 }
 
 func TestUpload_NoFiles(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	req, _ := buildMultipartRequest(t, map[string][]byte{})
+	req := buildMultipartRequest(t, map[string][]byte{})
 	rec := httptest.NewRecorder()
 	NewUploadHandler(dir, 2<<30).Upload(rec, req)
 
@@ -82,7 +82,7 @@ func TestUpload_ValidJPEG(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	req, _ := buildMultipartRequest(t, map[string][]byte{
+	req := buildMultipartRequest(t, map[string][]byte{
 		"photo.jpg": jpegMagicBytes(),
 	})
 	rec := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestUpload_UnsupportedExtension(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	req, _ := buildMultipartRequest(t, map[string][]byte{
+	req := buildMultipartRequest(t, map[string][]byte{
 		"document.txt": []byte("not an image"),
 	})
 	rec := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func TestUpload_InvalidMagicBytes(t *testing.T) {
 
 	dir := t.TempDir()
 	// .jpg extension but random content — no valid JPEG magic bytes.
-	req, _ := buildMultipartRequest(t, map[string][]byte{
+	req := buildMultipartRequest(t, map[string][]byte{
 		"fake.jpg": []byte("this is not a jpeg at all"),
 	})
 	rec := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestUpload_PathTraversalInFilename(t *testing.T) {
 
 	dir := t.TempDir()
 	// Filename tries to escape the session directory.
-	req, _ := buildMultipartRequest(t, map[string][]byte{
+	req := buildMultipartRequest(t, map[string][]byte{
 		"../evil.jpg": jpegMagicBytes(),
 	})
 	rec := httptest.NewRecorder()

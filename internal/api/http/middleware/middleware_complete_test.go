@@ -333,7 +333,7 @@ func TestRecoveryNormalRequest(t *testing.T) {
 	}
 }
 
-// ============ MaxBodySize Tests ============
+// ============ MaxBodySize Tests ============.
 
 func TestMaxBodySizeAllowsSmallBody(t *testing.T) {
 	t.Parallel()
@@ -376,7 +376,7 @@ func TestMaxBodySizeRejectsLargeBody(t *testing.T) {
 	}
 }
 
-// ============ RequestLogger Tests ============
+// ============ RequestLogger Tests ============.
 
 func TestRequestLoggerDoesNotLogStaticAssets(t *testing.T) {
 	t.Parallel()
