@@ -353,7 +353,20 @@
   .graph-container svg { width: 100%; height: 400px; }
   .graph-node { cursor: pointer; }
   .graph-node circle { transition: all 0.2s; }
-  .graph-node:hover circle { stroke-width: 3; stroke: var(--accent); filter: brightness(1.3); }
+  .graph-node .node-ring { fill: transparent; }
+  .graph-node .node-fallback { transition: all 0.2s; }
+  .graph-node .node-initials {
+    fill: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .graph-node image {
+    pointer-events: none;
+    image-rendering: auto;
+  }
   .graph-node text { fill: var(--text); font-size: 11px; text-anchor: middle; pointer-events: none; }
   .graph-link { stroke: rgba(255,255,255,0.15); stroke-linecap: round; }
   .graph-link:hover { stroke: var(--accent); stroke-width: 2 !important; }
@@ -1136,9 +1149,11 @@ async function renderRelationsGraph(person) {
     .attr('width', '100%')
     .attr('height', height);
   
+  // Shared SVG defs.
+  const defs = svg.append('defs');
+  
   // Create arrow marker for links.
-  svg.append('defs')
-    .append('marker')
+  defs.append('marker')
     .attr('id', 'arrowhead')
     .attr('viewBox', '0 -5 10 10')
     .attr('refX', 28)
@@ -1153,6 +1168,17 @@ async function renderRelationsGraph(person) {
   const gLinks = svg.append('g').attr('class', 'links');
   const gNodes = svg.append('g').attr('class', 'nodes');
   const gLabels = svg.append('g').attr('class', 'labels');
+  
+  // Node-specific clip paths for circular avatars.
+  defs.selectAll('clipPath.node-avatar-clip')
+    .data(nodes)
+    .join('clipPath')
+    .attr('class', 'node-avatar-clip')
+    .attr('id', d => 'avatar-clip-' + d.id)
+    .append('circle')
+    .attr('r', d => d.group === 'center' ? 24 : 19)
+    .attr('cx', 0)
+    .attr('cy', 0);
   
   // Create simulation.
   const simulation = d3.forceSimulation(nodes)
@@ -1195,17 +1221,56 @@ async function renderRelationsGraph(person) {
       .on('end', dragended)
     );
   
-  // Node circles.
+  // Outer ring is always visible to keep hover/highlight stable.
   node.append('circle')
+    .attr('class', 'node-ring')
     .attr('r', d => d.group === 'center' ? 28 : 22)
-    .attr('fill', d => d.group === 'center' ? 'var(--accent)' : '#1a1a2e')
+    .attr('fill', 'transparent')
     .attr('stroke', 'var(--accent)')
     .attr('stroke-width', 1.5)
     .attr('opacity', 0.9);
   
+  // Fallback fill for nodes without avatar.
+  node.append('circle')
+    .attr('class', 'node-fallback')
+    .attr('r', d => d.group === 'center' ? 24 : 19)
+    .attr('fill', d => d.group === 'center' ? 'var(--accent)' : '#1a1a2e')
+    .attr('opacity', d => d.avatar ? 0 : 0.95);
+  
+  // Initials inside fallback nodes.
+  node.append('text')
+    .attr('class', 'node-initials')
+    .attr('dy', 3)
+    .attr('opacity', d => d.avatar ? 0 : 1)
+    .text(d => {
+      const words = (d.name || '').trim().split(/\s+/).filter(Boolean);
+      if (words.length >= 2) {
+        return (words[0][0] + words[1][0]).toUpperCase();
+      }
+      if (words.length === 1) {
+        return words[0].slice(0, 2).toUpperCase();
+      }
+      return 'P' + String(d.id);
+    });
+  
+  // Avatar image inside circular clip.
+  node.filter(d => !!d.avatar)
+    .append('image')
+    .attr('x', d => -(d.group === 'center' ? 24 : 19))
+    .attr('y', d => -(d.group === 'center' ? 24 : 19))
+    .attr('width', d => (d.group === 'center' ? 48 : 38))
+    .attr('height', d => (d.group === 'center' ? 48 : 38))
+    .attr('href', d => '/output/' + d.avatar)
+    .attr('clip-path', d => 'url(#avatar-clip-' + d.id + ')')
+    .on('error', function(event, d) {
+      d3.select(this).remove();
+      d3.select(this.parentNode).select('.node-fallback').attr('opacity', 0.95);
+      d3.select(this.parentNode).select('.node-initials').attr('opacity', 1);
+    });
+  
   // Node labels.
   node.append('text')
-    .attr('dy', 4)
+    .attr('dy', d => (d.group === 'center' ? 41 : 34))
     .attr('fill', 'var(--text)')
     .attr('font-size', '10')
     .attr('font-weight', d => d.group === 'center' ? 'bold' : 'normal')
@@ -1215,14 +1280,16 @@ async function renderRelationsGraph(person) {
   
   // Hover effects.
   node.on('mouseover', function(event, d) {
-    d3.select(this).select('circle')
+    d3.select(this).select('.node-ring')
       .attr('stroke-width', 3)
       .attr('filter', 'brightness(1.3)');
+    d3.select(this).select('.node-fallback')
+      .attr('filter', 'brightness(1.15)');
     
     // Highlight connected links.
     link.filter(l => l.source.id === d.id || l.target.id === d.id)
       .attr('stroke', 'var(--accent)')
-      .attr('stroke-width', l => Math.max(3, l.attr('stroke-width')));
+      .attr('stroke-width', l => Math.max(3, Math.min(6, 1 + l.shared * 0.8)));
     
     // Show tooltip.
     tooltip.style.opacity = 1;
@@ -1236,8 +1303,10 @@ async function renderRelationsGraph(person) {
     tooltip.style.top = (event.pageY - 10) + 'px';
   })
   .on('mouseout', function() {
-    d3.select(this).select('circle')
+    d3.select(this).select('.node-ring')
       .attr('stroke-width', 1.5)
+      .attr('filter', null);
+    d3.select(this).select('.node-fallback')
       .attr('filter', null);
     
     link.attr('stroke', null);
