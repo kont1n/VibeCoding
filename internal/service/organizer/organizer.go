@@ -15,7 +15,6 @@ import (
 
 	"github.com/kont1n/face-grouper/internal/model"
 	"github.com/kont1n/face-grouper/internal/service/avatar"
-	"github.com/kont1n/face-grouper/internal/service/report"
 )
 
 // PersonInfo holds metadata about an organized person cluster for the report.
@@ -29,11 +28,6 @@ type PersonInfo struct {
 	Photos       []string
 }
 
-type previousAvatar struct {
-	avatarPath string
-	quality    float64
-}
-
 // Organizer organizes face clusters into person directories.
 type Organizer struct{}
 
@@ -45,19 +39,7 @@ func NewOrganizer() *Organizer {
 // Organize creates Person_N directories under outputDir, symlinks photos, and picks
 // the best face thumbnail per person. Returns metadata for each person cluster.
 func (o *Organizer) Organize(clusters []model.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]PersonInfo, error) {
-	if avatarUpdateThreshold < 0 {
-		avatarUpdateThreshold = 0
-	}
-
-	prev := make(map[int]previousAvatar)
-	if oldReport, err := report.Load(outputDir); err == nil {
-		for _, p := range oldReport.Persons {
-			prev[p.ID] = previousAvatar{
-				avatarPath: p.AvatarPath,
-				quality:    p.QualityScore,
-			}
-		}
-	}
+	_ = avatarUpdateThreshold
 
 	// Clean only Person_* dirs and old report — preserve .thumbnails, avatars and logs.
 	if entries, err := os.ReadDir(outputDir); err == nil {
@@ -127,34 +109,17 @@ func (o *Organizer) Organize(clusters []model.Cluster, outputDir string, avatarU
 		}
 
 		personID := i + 1
-		prevAvatar := prev[personID]
-		avatarRel := prevAvatar.avatarPath
-		avatarScore := prevAvatar.quality
-
-		if avatarRel != "" {
-			avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
-			if _, err := os.Stat(avatarAbs); err != nil {
-				avatarRel = ""
-				avatarScore = 0
-			}
-		}
+		avatarRel := ""
+		avatarScore := 0.0
 
 		if bestThumb != "" {
-			shouldUpdate := false
-			if avatarRel == "" || avatarScore <= 0 {
-				shouldUpdate = true
-			} else if bestScore >= avatarScore*(1.0+avatarUpdateThreshold) {
-				shouldUpdate = true
-			}
-
-			if shouldUpdate {
-				avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d.jpg", personID)))
-				avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
-				if err := copyFile(bestThumb, avatarAbs); err != nil {
-					_, _ = fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
-				} else {
-					avatarScore = bestScore
-				}
+			avatarRel = filepath.ToSlash(filepath.Join("avatars", fmt.Sprintf("Person_%d.jpg", personID)))
+			avatarAbs := filepath.Join(outputDir, filepath.FromSlash(avatarRel))
+			if err := copyFile(bestThumb, avatarAbs); err != nil {
+				_, _ = fmt.Fprintf(w, "WARNING: avatar update for Person_%d: %v\n", personID, err)
+				avatarRel = ""
+			} else {
+				avatarScore = bestScore
 			}
 		}
 

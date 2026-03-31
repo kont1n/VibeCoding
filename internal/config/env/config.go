@@ -39,17 +39,17 @@ type ExtractConfig struct {
 
 // ClusterConfig хранит настройки кластеризации.
 type ClusterConfig struct {
-	Threshold            float64
-	RefineFactor         float64
-	EnableTwoStage       bool
-	PreclusterThreshold  float64
+	Threshold              float64
+	RefineFactor           float64
+	EnableTwoStage         bool
+	PreclusterThreshold    float64
 	CentroidMergeThreshold float64
-	MutualK              int
-	EnableAmbiguityGate  bool
-	AmbiguityTopK        int
-	AmbiguityMeanMin     float64
-	AmbiguityMeanMax     float64
-	AmbiguityCentroidMax float64
+	MutualK                int
+	EnableAmbiguityGate    bool
+	AmbiguityTopK          int
+	AmbiguityMeanMin       float64
+	AmbiguityMeanMax       float64
+	AmbiguityCentroidMax   float64
 }
 
 // OrganizerConfig хранит настройки организации результатов.

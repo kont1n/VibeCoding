@@ -7,10 +7,12 @@ import (
 	"github.com/kont1n/face-grouper/internal/model"
 )
 
+// ClusterDiagnostics contains diagnostics for top-N largest clusters.
 type ClusterDiagnostics struct {
 	TopClusters []ClusterDiagnostic `json:"top_clusters,omitempty"`
 }
 
+// ClusterDiagnostic stores aggregate quality signals for one cluster.
 type ClusterDiagnostic struct {
 	ClusterID            int             `json:"cluster_id"`
 	FaceCount            int             `json:"face_count"`
@@ -28,6 +30,7 @@ type ClusterDiagnostic struct {
 	TopOutliers          []OutlierSample `json:"top_outliers,omitempty"`
 }
 
+// OutlierSample stores a potentially problematic face within a cluster.
 type OutlierSample struct {
 	FilePath       string  `json:"file_path"`
 	DetScore       float64 `json:"det_score"`
@@ -37,6 +40,7 @@ type OutlierSample struct {
 	NeighborDegree int     `json:"neighbor_degree"`
 }
 
+// AnalyzeClusters computes diagnostics for largest clusters in a run.
 func AnalyzeClusters(clusters []model.Cluster, threshold, refineFactor float64, topN int) *ClusterDiagnostics {
 	if len(clusters) == 0 {
 		return nil
@@ -199,7 +203,7 @@ func bboxArea(b model.BBox) float64 {
 	return w * h
 }
 
-func minMedianP95(values []float64) (float64, float64, float64) {
+func minMedianP95(values []float64) (minVal, medianVal, p95 float64) {
 	if len(values) == 0 {
 		return 0, 0, 0
 	}

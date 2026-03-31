@@ -318,6 +318,7 @@ processPairs:
 			scanWg.Wait()
 			go func() {
 				for range pairs {
+					_ = struct{}{}
 				}
 			}()
 			return nil, ctx.Err()
@@ -562,7 +563,7 @@ func pruneByEmbeddingAmbiguity(
 	meanMinCfg float64,
 	meanMaxCfg float64,
 	centroidMaxCfg float64,
-) ([]int, []int) {
+) (kept, reclassified []int) {
 	if len(keep) < 80 {
 		return keep, outliers
 	}
@@ -643,7 +644,12 @@ func pruneByEmbeddingAmbiguity(
 	return denseKeep, outliers
 }
 
-func pruneByLocalDensity(keep, outliers []int, embData []float64, dim int, refineThreshold float64) ([]int, []int) {
+func pruneByLocalDensity(
+	keep, outliers []int,
+	embData []float64,
+	dim int,
+	refineThreshold float64,
+) (kept, reclassified []int) {
 	// Small clusters are already stable enough.
 	if len(keep) < 25 {
 		return keep, outliers
