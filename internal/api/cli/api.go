@@ -41,8 +41,14 @@ func (a *API) Scan(ctx context.Context, dir string) ([]string, error) {
 }
 
 // Extract извлекает эмбеддинги лиц из изображений.
-func (a *API) Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*extraction.ExtractionResult, error) {
-	return a.extractionService.Extract(ctx, files, thumbDir, w)
+func (a *API) Extract(
+	ctx context.Context,
+	files []string,
+	thumbDir string,
+	w io.Writer,
+	onProgress extraction.ProgressCallback,
+) (*extraction.ExtractionResult, error) {
+	return a.extractionService.Extract(ctx, files, thumbDir, w, onProgress)
 }
 
 // Cluster группирует лица по эмбеддингам.

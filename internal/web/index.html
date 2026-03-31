@@ -609,6 +609,12 @@ let selectedFiles = [];
 let sseSource = null;
 let processingStartTime = null;
 
+function resetUploadActions() {
+  const btnStart = document.getElementById('btn-start');
+  btnStart.disabled = false;
+  btnStart.textContent = 'Начать обработку';
+}
+
 // ============================================================
 // ROUTER
 // ============================================================
@@ -630,6 +636,7 @@ function navigate(page, opts) {
   if (page === 'gallery') renderGallery();
   if (page === 'person' && opts && opts.idx !== undefined) showPerson(opts.idx);
   if (page === 'errors') renderErrors();
+  if (page === 'upload') resetUploadActions();
 
   window.scrollTo(0, 0);
 }
@@ -660,7 +667,7 @@ uploadZone.addEventListener('drop', (e) => {
 });
 fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 
-function handleFiles(fileList) {
+async function handleFiles(fileList) {
   selectedFiles = Array.from(fileList);
   if (selectedFiles.length === 0) return;
 
@@ -707,6 +714,7 @@ document.getElementById('btn-clear').addEventListener('click', function() {
   fileInput.value = '';
   document.getElementById('file-list').style.display = 'none';
   document.getElementById('upload-actions').style.display = 'none';
+  resetUploadActions();
 });
 
 document.getElementById('btn-start').addEventListener('click', async function() {

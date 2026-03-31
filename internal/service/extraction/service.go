@@ -30,9 +30,12 @@ type ExtractionResult struct {
 	FileErrors map[string]string
 }
 
+// ProgressCallback reports per-file extraction progress.
+type ProgressCallback func(processed, total int, filePath string)
+
 // ExtractionService определяет интерфейс сервиса экстракции.
 type ExtractionService interface {
-	Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*ExtractionResult, error)
+	Extract(ctx context.Context, files []string, thumbDir string, w io.Writer, onProgress ProgressCallback) (*ExtractionResult, error)
 }
 
 type extractionService struct {
@@ -55,7 +58,7 @@ func NewExtractionService(
 }
 
 // Extract performs face detection and embedding extraction.
-func (s *extractionService) Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*ExtractionResult, error) {
+func (s *extractionService) Extract(ctx context.Context, files []string, thumbDir string, w io.Writer, onProgress ProgressCallback) (*ExtractionResult, error) {
 	res := &ExtractionResult{FileErrors: make(map[string]string)}
 
 	// If models/ONNX Runtime were not initialized (e.g., in -view mode without ORT),
@@ -133,6 +136,9 @@ func (s *extractionService) Extract(ctx context.Context, files []string, thumbDi
 
 			mu.Lock()
 			processed++
+			if onProgress != nil {
+				onProgress(processed, total, f)
+			}
 			if err != nil {
 				_, _ = fmt.Fprintf(w, "[%d/%d] ERROR %s: %v\n", processed, total, f, err)
 				logger.Error(ctx, "file processing error",

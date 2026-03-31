@@ -17,7 +17,13 @@ import (
 // PipelineAPI defines the API interface used by pipeline steps.
 type PipelineAPI interface {
 	Scan(ctx context.Context, inputDir string) ([]string, error)
-	Extract(ctx context.Context, files []string, thumbDir string, w io.Writer) (*extraction.ExtractionResult, error)
+	Extract(
+		ctx context.Context,
+		files []string,
+		thumbDir string,
+		w io.Writer,
+		onProgress extraction.ProgressCallback,
+	) (*extraction.ExtractionResult, error)
 	Cluster(ctx context.Context, faces []model.Face, threshold float64) ([]model.Cluster, error)
 	Organize(ctx context.Context, clusters []model.Cluster, outputDir string, avatarUpdateThreshold float64, w io.Writer) ([]organizer.PersonInfo, error)
 }
@@ -117,7 +123,7 @@ func (s *ExtractStep) Name() string { return "extract" }
 // Execute runs the extract step.
 func (s *ExtractStep) Execute(ctx context.Context, pc *PipelineContext) error {
 	_, _ = fmt.Fprintf(pc.Writer, "=== Extracting face embeddings ===\n")
-	result, err := s.api.Extract(ctx, pc.Files, s.thumbDir, pc.Writer)
+	result, err := s.api.Extract(ctx, pc.Files, s.thumbDir, pc.Writer, nil)
 	if err != nil {
 		return fmt.Errorf("extraction error: %w", err)
 	}

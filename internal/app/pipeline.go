@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -49,8 +50,12 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	totalProgress := 0.0
 	var totalItems, processedItems int
 	var currentFile string
+	var progressMu sync.Mutex
 
 	send := func(stage, label string, progress float64) {
+		progressMu.Lock()
+		defer progressMu.Unlock()
+
 		now := time.Now()
 
 		// Track stage start.
@@ -150,7 +155,14 @@ func (p *Pipeline) run(ctx context.Context, sessionID, inputDir string, ch chan<
 	// --- Extract. ---.
 	send("extract", "Обнаружение лиц...", 0.05)
 
-	extractResult, err := api.Extract(ctx, files, thumbDir, w)
+	extractResult, err := api.Extract(ctx, files, thumbDir, w, func(processed, total int, filePath string) {
+		processedItems = processed
+		totalItems = total
+		currentFile = filePath
+		if total > 0 {
+			send("extract", "Обнаружение лиц...", float64(processed)/float64(total))
+		}
+	})
 	if err != nil {
 		fail(fmt.Sprintf("extraction error: %v", err))
 		return
