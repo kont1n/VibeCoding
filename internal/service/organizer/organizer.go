@@ -2,7 +2,7 @@
 package organizer
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -253,7 +253,7 @@ func shortFileHash(path string) string {
 	}
 	defer func() { _ = f.Close() }()
 
-	h := sha1.New() //nolint:gosec // used only for cache-busting filename suffix.
+	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return shortPathHash(path)
 	}
