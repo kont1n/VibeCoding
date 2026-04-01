@@ -76,8 +76,10 @@ jobs:
           DB_SSLMODE: disable
 
       - name: Upload coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.out
           flags: unittests
           fail_ci_if_error: false
