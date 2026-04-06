@@ -248,8 +248,16 @@ func (s *extractionService) processImage(
 		return nil, fmt.Errorf("empty image: %s", imagePath)
 	}
 
-	// Optional downscale.
-	if s.cfg.MaxDim > 0 {
+	// Smart resize based on image megapixels.
+	// Optimized for RTX 5070: <2MP no resize, 2-8MP -> 1920px, >8MP -> 2560px.
+	if s.cfg.EnableSmartResize {
+		resized := imageutil.SmartResize(img)
+		if resized != img {
+			img.Close()
+			img = resized
+		}
+	} else if s.cfg.MaxDim > 0 {
+		// Fallback to legacy MaxDim behavior.
 		maxSide := img.Height
 		if img.Width > maxSide {
 			maxSide = img.Width

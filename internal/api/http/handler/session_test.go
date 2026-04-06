@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +56,9 @@ func newTestSessionHandler(t *testing.T, runner PipelineRunner) (*SessionHandler
 
 func startSession(t *testing.T, h *SessionHandler, sessionID, inputDir string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"input_dir": "` + inputDir + `"}`
+	// Escape backslashes for JSON on Windows.
+	escapedDir := strings.ReplaceAll(inputDir, "\\", "\\\\")
+	body := `{"input_dir": "` + escapedDir + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/process", bytes.NewBufferString(body))
 	req.SetPathValue("id", sessionID)
 	rec := httptest.NewRecorder()

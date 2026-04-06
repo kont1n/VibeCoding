@@ -65,6 +65,8 @@ type PhotoRepository interface {
 	ListByPerson(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.Photo, error)
 	// CountByPerson returns the number of photos for a person.
 	CountByPerson(ctx context.Context, personID uuid.UUID) (int, error)
+	// ListByPersonWithFaces returns photos for a person with all faces and bounding boxes.
+	ListByPersonWithFaces(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.PhotoWithFaces, error)
 }
 
 // RelationRepository defines the interface for relation data access.

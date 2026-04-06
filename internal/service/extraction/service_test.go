@@ -50,11 +50,13 @@ func TestPrepareThumbnailImage_ReturnsResizedImage(t *testing.T) {
 	}
 
 	thumb := svc.prepareThumbnailImage(img, det)
+	//nolint:staticcheck
 	if thumb == nil {
 		t.Fatal("expected thumbnail image, got nil")
 	}
 	defer thumb.Close()
 
+	//nolint:staticcheck
 	if thumb.Width != 160 || thumb.Height != 160 {
 		t.Fatalf("unexpected thumbnail size: got %dx%d, want 160x160", thumb.Width, thumb.Height)
 	}
@@ -97,7 +99,7 @@ func BenchmarkPrepareThumbnailImage(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		thumb := svc.prepareThumbnailImage(img, det)
-		if thumb == nil {
+		if thumb == nil { //nolint:staticcheck
 			b.Fatal("prepareThumbnailImage returned nil")
 		}
 		thumb.Close()

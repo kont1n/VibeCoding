@@ -124,3 +124,20 @@ type Cluster struct {
 	ID    int    `json:"id"`
 	Faces []Face `json:"faces"`
 }
+
+// PhotoWithFaces represents a photo with all detected faces and their bounding boxes.
+type PhotoWithFaces struct {
+	URL    string     `json:"url"`
+	Width  int        `json:"width"`
+	Height int        `json:"height"`
+	Faces  []FaceInfo `json:"faces"`
+}
+
+// FaceInfo represents information about a face in a photo.
+type FaceInfo struct {
+	PersonID     string  `json:"person_id"`
+	PersonName   string  `json:"person_name"`
+	IsThisPerson bool    `json:"is_this_person"`
+	BBox         BBox    `json:"bbox"`
+	Confidence   float32 `json:"confidence"`
+}

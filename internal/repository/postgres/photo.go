@@ -337,3 +337,81 @@ func (r *PhotoRepositoryImpl) CountByPerson(ctx context.Context, personID uuid.U
 
 	return count, nil
 }
+
+// ListByPersonWithFaces returns photos for a person with all faces and bounding boxes.
+func (r *PhotoRepositoryImpl) ListByPersonWithFaces(ctx context.Context, personID uuid.UUID, offset, limit int) ([]*model.PhotoWithFaces, error) {
+	query := `
+		SELECT DISTINCT p.id, p.path, p.width, p.height
+		FROM photos p
+		INNER JOIN faces f ON f.photo_id = p.id
+		WHERE f.person_id = $1
+		ORDER BY p.uploaded_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.pool.Query(ctx, query, personID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list photos by person: %w", err)
+	}
+	defer rows.Close()
+
+	var photos []*model.PhotoWithFaces
+	for rows.Next() {
+		photo := &model.PhotoWithFaces{}
+		var photoID uuid.UUID
+		err := rows.Scan(&photoID, &photo.URL, &photo.Width, &photo.Height)
+		if err != nil {
+			return nil, fmt.Errorf("scan photo: %w", err)
+		}
+
+		// Get all faces for this photo.
+		facesQuery := `
+			SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, f.det_score, 
+			       f.person_id, p.name, p.custom_name
+			FROM faces f
+			INNER JOIN persons p ON p.id = f.person_id
+			WHERE f.photo_id = $1
+		`
+		facesRows, err := r.pool.Query(ctx, facesQuery, photoID)
+		if err != nil {
+			return nil, fmt.Errorf("get faces for photo: %w", err)
+		}
+
+		for facesRows.Next() {
+			var face model.FaceInfo
+			var facePersonID uuid.UUID
+			var personName, customName string
+			var x1, y1, x2, y2, detScore float64
+
+			err := facesRows.Scan(&x1, &y1, &x2, &y2, &detScore, &facePersonID, &personName, &customName)
+			if err != nil {
+				facesRows.Close()
+				return nil, fmt.Errorf("scan face: %w", err)
+			}
+
+			face.PersonID = facePersonID.String()
+			face.PersonName = customName
+			if face.PersonName == "" {
+				face.PersonName = personName
+			}
+			face.IsThisPerson = facePersonID == personID
+			face.BBox = model.BBox{
+				X1: float32(x1),
+				Y1: float32(y1),
+				X2: float32(x2),
+				Y2: float32(y2),
+			}
+			face.Confidence = float32(detScore)
+			photo.Faces = append(photo.Faces, face)
+		}
+		facesRows.Close()
+
+		photos = append(photos, photo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photos: %w", err)
+	}
+
+	return photos, nil
+}

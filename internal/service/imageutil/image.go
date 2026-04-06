@@ -448,3 +448,73 @@ func ValidateImageHeader(data []byte) bool {
 
 	return false
 }
+
+// ResizeToMaxDim resizes an image so that its longest dimension equals maxDim,
+// maintaining the aspect ratio. If the image is already smaller, it returns the original.
+func ResizeToMaxDim(img *Image, maxDim int) *Image {
+	if maxDim <= 0 {
+		return img
+	}
+
+	maxSide := img.Width
+	if img.Height > maxSide {
+		maxSide = img.Height
+	}
+
+	if maxSide <= maxDim {
+		return img
+	}
+
+	scale := float64(maxDim) / float64(maxSide)
+	newWidth := int(float64(img.Width) * scale)
+	newHeight := int(float64(img.Height) * scale)
+
+	return Resize(img, newWidth, newHeight)
+}
+
+// SmartResize applies intelligent resizing based on image megapixels.
+// Returns the original image for small images (< 2MP),
+// resizes to 1920px for medium (2-8MP),
+// and resizes to 2560px for large (> 8MP).
+func SmartResize(img *Image) *Image {
+	mp := float64(img.Width*img.Height) / 1_000_000.0
+
+	switch {
+	case mp < 2.0:
+		// Small image: no resize needed.
+		return img
+	case mp <= 8.0:
+		// Medium image: resize to 1920px max.
+		return ResizeToMaxDim(img, 1920)
+	default:
+		// Large image: resize to 2560px max.
+		return ResizeToMaxDim(img, 2560)
+	}
+}
+
+// SmartResizeWithConfig applies intelligent resizing with configurable thresholds.
+// smallMP: threshold below which no resize occurs (default: 2.0).
+// mediumMaxDim: max dimension for medium images (default: 1920).
+// largeMaxDim: max dimension for large images (default: 2560).
+func SmartResizeWithConfig(img *Image, smallMP, mediumMaxDim, largeMaxDim float64) *Image {
+	if smallMP <= 0 {
+		smallMP = 2.0
+	}
+	if mediumMaxDim <= 0 {
+		mediumMaxDim = 1920
+	}
+	if largeMaxDim <= 0 {
+		largeMaxDim = 2560
+	}
+
+	mp := float64(img.Width*img.Height) / 1_000_000.0
+
+	switch {
+	case mp < smallMP:
+		return img
+	case mp <= 8.0:
+		return ResizeToMaxDim(img, int(mediumMaxDim))
+	default:
+		return ResizeToMaxDim(img, int(largeMaxDim))
+	}
+}
